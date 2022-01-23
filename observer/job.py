@@ -31,12 +31,33 @@ class Job(mp.Process):
       String that identifies the job group that is being used
     :param job_name:
       String that identifies the job type or name that is being used
-    :param log_file:
-      Path object that determines where logs are being sent to for
-      later auditing
+    :param log_dir:
+      String that identifies the location of where logs will be setup and sent
     :param log_level:
       Level of logging to be tracked and sent to the log files for server
       administration jobs
+    :param has_mutex:
+      Boolean of whether or not this job has a mutex
+    :param has_archive:
+      Boolean of whether or not this job generates an archive file
+    :param run_date:
+      String identifying the date of the job run, or possibly for re-runs
+    :param archive_dir:
+      String that identifies location of archives
+    :param tmp_dir:
+      String that identifies location of tmp directory
+    :param dtd_dir:
+      String that identifies location of data type definitions for data
+    :param data_dir:
+      String that identifies location of where data exists during jobs
+    :param mutex_dir:
+      String that identifies location of where mutexes are stored
+    :param override:
+      Boolean identifying whether or not this job is in override mode for re-run
+    :param comp_level:
+      Integer identifying compression level for bzip2
+    :param base_config:
+      String that identifies location of configuration file for the job
     """
 
     def __init__(self, run_dir, job_name, log_dir=None,
