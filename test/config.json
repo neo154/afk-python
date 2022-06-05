@@ -1,0 +1,6 @@
+{
+  "BRANCH":"qualys_dev",
+  "SRC_DIR":"/home/neo154/Project/observer/test/",
+  "REMOTE_URL":"git@github.com/neo154/collect_sec_data",
+  "SSH_KEY_FILE":"/home/neo154/.ssh/github_rsa"
+}
