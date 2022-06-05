@@ -1,8 +1,7 @@
 #!/usr/bin/python3
-
-"""__init__.py Module exporter for shared library
-
+"""Init script for storage models and abstraction
 """
 
 from observer.job import Job
-from observer import decarators
+from observer.task import BaseTask
+from observer.job_runner import Runner
