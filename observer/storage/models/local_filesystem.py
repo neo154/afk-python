@@ -2,15 +2,16 @@
 """local_filesystem.py
 
 Author: neo154
-Version: 0.0.1
-Date Modified: 2022-06-05
+Version: 0.0.2
+Date Modified: 2022-06-11
 
 Defines interactions and local filesystem objects
 this will alow for abstraction at storage level for just using and
 operating with multiple storage models that should support it
 """
 
-from typing import Union
+from io import TextIOWrapper
+from typing import Literal, Union
 from pathlib import Path
 from logging import Logger
 from shutil import copy2
@@ -113,6 +114,16 @@ class LocalFile():
         with self.absolute_path.open('r') as tmp_ref:
             ret_contents = tmp_ref.read()
         return ret_contents
+
+    def open(self, mode: Literal['r', 'rb', 'w', 'wb', 'a']) -> TextIOWrapper:
+        """
+        Opens local file and returns open file if exists for stream reading
+
+        :returns: TextIOWrapper of file if it exists
+        """
+        if not self.absolute_path.is_file():
+            raise RuntimeError("File cannot be read, doesn't exist or isn't a file")
+        return self.absolute_path.open(mode)
 
     def delete(self, missing_ok: bool=False, logger: Logger=None) -> None:
         """
