@@ -2,8 +2,8 @@
 """storage_models.py
 
 Author: neo154
-Version: 0.0.1
-Date Modified: 2022-06-05
+Version: 0.0.2
+Date Modified: 2022-06-11
 
 Module that acts as a dummy for the variables and objects that are created
 and required for observer storage
@@ -56,4 +56,5 @@ def path_to_storage_location(path_ref: Path, is_dir: bool=None) -> StorageLocati
     :param is_dir: Indication of whether or not this are is a directory
     :returns: StorageLocation, specifically LocalFile object
     """
-    return generate_storage_location(LocalFSConfig(path_ref, is_dir))
+    return generate_storage_location({'config_type': 'local_filesystem',
+        'config': LocalFSConfig(path_ref, is_dir), 'is_dir': is_dir})

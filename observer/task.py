@@ -2,8 +2,8 @@
 """task.py
 
 Author: neo154
-Version: 0.1.0
-Date Modified: 2022-06-05
+Version: 0.1.1
+Date Modified: 2022-06-06
 
 Module that describes a singular task that is to be, this is the basic structure singular tasks
 that will utilize things like storage modules and other basic utilities
@@ -111,6 +111,7 @@ class BaseTask():
         self.logger = logger
         self.set_level(level)
         self.logger.setLevel(level)
+        self.storage.set_logger(self.logger)
 
     def set_level(self, level: int) -> None:
         """
