@@ -130,5 +130,12 @@ dmypy.json
 
 # Others
 tmp/
+archive/
+data/
+*.tar.bz2
+*.tar.gz
+*.csv
+*.csv.gz
+*.log
 test.py
 .vscode
