@@ -2,8 +2,8 @@
 """storage_config.py
 
 Author: neo154
-Version: 0.0.1
-Date Modified: 2022-06-05
+Version: 0.1.0
+Date Modified: 2022-12-19
 
 Storage configuration dictionary declaration
 """
@@ -53,7 +53,7 @@ class StorageConfig(dict):
         )
         self._eval_arg(
             attr_name='archive_loc', prefix_loc=self['base_loc'],
-            default_str='archive', as_dir=True, loc_arg=archive_loc
+            default_str='archives', as_dir=True, loc_arg=archive_loc
         )
         self._eval_arg(
             attr_name='data_loc', prefix_loc=self['base_loc'],
