@@ -3,7 +3,7 @@
 
 Author: neo154
 Version: 0.1.0
-Date Modified: 2022-12-19
+Date Modified: 2023-04-28
 
 Defines interactions and remote filesystem objects
 this will alow for abstraction at storage level for just using and
@@ -14,7 +14,7 @@ from io import BufferedReader, BufferedWriter, FileIO, TextIOWrapper
 from logging import Logger
 from pathlib import Path
 from tempfile import mkdtemp, mkstemp
-from typing import Literal, Union
+from typing import Literal, Union, Any
 
 from observer.storage.models.storage_model_configs import RemoteFSConfig
 from observer.observer_logging import generate_logger
@@ -142,6 +142,15 @@ class RemoteFile():
         """
         return self.__ssh_interface.host
 
+    @property
+    def parent(self) -> Any:
+        """
+        Parent of the current LocalFile reference
+
+        :returns: LocalFile object of parent reference
+        """
+        return RemoteFile(RemoteFSConfig(self.__absolute_path, self.__ssh_interface, True), True)
+
     def exists(self) -> bool:
         """
         Returns whether or not this object exists or not
@@ -176,7 +185,7 @@ class RemoteFile():
         :returns: None
         """
         if self._tmp_file_ref is not None:
-            self._tmp_file_ref.unlink()
+            self._tmp_file_ref.unlink(missing_ok=True)
             self._tmp_file_ref.touch()
         self.__ssh_interface.touch(self.absolute_path)
 
@@ -316,7 +325,7 @@ class RemoteFile():
         """
         self.__ssh_interface.create_loc(self.absolute_path)
 
-    def join_loc(self, loc_addition: Union[str, Path], is_dir: bool=None) -> None:
+    def join_loc(self, loc_addition: Union[str, Path], is_dir: bool=None) -> Any:
         """
         Joins current location given to another based on the path or string
 
@@ -347,7 +356,7 @@ class RemoteFile():
         :returns: None
         """
         if not local_file.exists():
-            FileNotFoundError(f"Not able to locate file(s) '{local_file}'")
+            raise FileNotFoundError(f"Not able to locate file(s) '{local_file}'")
         self.__ssh_interface.push_file(local_file, self.absolute_path)
 
     def pull_file(self, local_dest: Path) -> None:

@@ -3,7 +3,7 @@
 
 Author: neo154
 Version: 0.1.0
-Date Modified: 2022-12-19
+Date Modified: 2023-04-29
 
 
 Class and definitions for how storage is handled for the platform
@@ -288,6 +288,10 @@ class Storage():
     def ssh_interfaces(self) -> SSHInterfaceCollection:
         """Getter and property declaration for ssh interfaces tracking"""
         return self.__ssh_interfaces
+
+    def set_logger(self, new_logger: Logger) -> None:
+        """Setter for logger"""
+        self.__logger = new_logger
 
     def gen_datafile_ref(self, file_name: str) -> StorageLocation:
         """

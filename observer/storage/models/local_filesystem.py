@@ -3,7 +3,7 @@
 
 Author: neo154
 Version: 0.1.0
-Date Modified: 2022-12-19
+Date Modified: 2023-04-28
 
 Defines interactions and local filesystem objects
 this will alow for abstraction at storage level for just using and
@@ -14,7 +14,7 @@ from io import BufferedReader, BufferedWriter, FileIO, TextIOWrapper
 from logging import Logger
 from pathlib import Path
 from shutil import copy2, copytree
-from typing import Literal, Union
+from typing import Literal, Union, Any
 
 from observer.storage.models.storage_model_configs import LocalFSConfig
 from observer.observer_logging import generate_logger
@@ -93,6 +93,15 @@ class LocalFile():
         :returns: String describing storage type
         """
         return self.__type
+
+    @property
+    def parent(self) -> Any:
+        """
+        Parent of the current LocalFile reference
+
+        :returns: LocalFile object of parent reference
+        """
+        return LocalFile(LocalFSConfig(loc=self.absolute_path.parent), is_dir=True)
 
     def exists(self) -> bool:
         """
@@ -224,7 +233,7 @@ class LocalFile():
         """
         self.absolute_path.mkdir(parents=parents, exist_ok=True)
 
-    def join_loc(self, loc_addition: Union[str, Path], as_dir: bool=False) -> None:
+    def join_loc(self, loc_addition: Union[str, Path], as_dir: bool=False) -> Any:
         """
         Joins current location given to another based on the path or string
 
