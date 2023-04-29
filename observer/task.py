@@ -3,7 +3,7 @@
 
 Author: neo154
 Version: 0.1.1
-Date Modified: 2022-06-06
+Date Modified: 2023-04-28
 
 Module that describes a singular task that is to be, this is the basic structure singular tasks
 that will utilize things like storage modules and other basic utilities
@@ -14,7 +14,7 @@ import logging
 from logging.handlers import QueueHandler
 import sys
 from multiprocessing import Queue
-from typing import Union, Iterable, Mapping, Any
+from typing import Union, Iterable, Mapping, Any, Dict
 
 from observer.storage import Storage
 
@@ -36,25 +36,27 @@ class BaseTask():
     def __init__(self, task_type: str='generic_tasktype', task_name: str='generic_taskname',
             has_mutex: bool=True, has_archive: bool=True, override: bool=False,
             run_date: datetime.datetime=datetime.datetime.now(),
-            storage: Storage=Storage(), logger: logging.Logger=_defaultLogger,
+            storage_config: Dict=None, logger: logging.Logger=_defaultLogger,
             log_level: int=logging.INFO, interactive: bool=INTERACTIVE) -> None:
-        """Initializer for all tasks, any logs that occur here will not be in log file for jobs"""
+        """Initializer for all tasks, any logs that occur here will not be in log file for tasks"""
         self.__task_name = task_name.lower().replace(' ', '_')
         self.__task_type = task_type.lower().replace(' ', '_')
         self.__run_date = run_date
-        self.__storage = storage
-        self.__job_run_check = False
+        self.__storage = Storage(storage_config)
+        self.__task_run_check = False
         self.logger = logger
         self.log_level = log_level
         self.__interactive = interactive
         self.__override = override
         self.__has_mutex = has_mutex
         self.__has_archive = has_archive
+        self.__mutex_queue = None
+        self.__uuid = None
 
     @property
     def task_name(self) -> str:
         """
-        Identifier for a  a speific job by script, class, or function
+        Identifier for a  a speific task by script, class, or function
 
         * REQUIRED TO BE WITHOUT SPACES AND WILL GET THROWN TO LOWERCASE
         """
@@ -63,7 +65,7 @@ class BaseTask():
     @property
     def task_type(self) -> str:
         """
-        Identifier for a group of jobs, like a set of analyses or download tasks
+        Identifier for a group of tasks, like a set of analyses or download tasks
 
         * REQUIRED TO BE WITHOUT SPACES AND WILL GET THROWN TO LOWERCASE
         """
@@ -71,7 +73,7 @@ class BaseTask():
 
     @property
     def run_date(self) -> datetime.datetime:
-        """Datetime object for the run of a job"""
+        """Datetime object for the run of a task"""
         return self.__run_date
 
     @property
@@ -94,7 +96,7 @@ class BaseTask():
         """
         Setter for itneractive indicator, becareful if you are messing with this
 
-        :param new_mode: Indicator for whether or not the job is running in interactive mode
+        :param new_mode: Indicator for whether or not the task is running in interactive mode
         :returns: None
         """
         self.__interactive = new_mode
@@ -111,7 +113,7 @@ class BaseTask():
         self.logger = logger
         self.set_level(level)
         self.logger.setLevel(level)
-        self.storage.set_logger(self.logger)
+        self.storage.set_logger(new_logger=self.logger)
 
     def set_level(self, level: int) -> None:
         """
@@ -124,10 +126,10 @@ class BaseTask():
 
     def _check_condition_run(self) -> None:
         """Checks to see if a check run condition has been run"""
-        if not self.__job_run_check:
-            raise Exception("Has not passed job conditions check yet")
+        if not self.__task_run_check:
+            raise RuntimeError("Has not passed task conditions check yet")
 
-    def check_run_conditions(self, override: bool) -> None:
+    def check_run_conditions(self, override: bool=False) -> None:
         """
         Checks whether or not all conditions for a run have been fulfilled
 
@@ -146,7 +148,7 @@ class BaseTask():
                 _exit_code(self.__interactive)
             else:
                 self.storage.archive_file.rotate()
-        for stop_file in self.storage.get_halt_list:
+        for stop_file in self.storage.halt_files:
             self.logger.debug("Checking for stop file: '%s'", stop_file)
             if stop_file.is_file():
                 self.logger.info("STOP_FILE_FOUND: %s", stop_file)
@@ -159,21 +161,24 @@ class BaseTask():
         if self.storage.mutex is not None and self.storage.mutex.exists():
             self.logger.info("MUTEX_FOUND")
             _exit_code(self.__interactive)
-        self.__job_run_check = True
+        self.__task_run_check = True
         self.storage.mutex.create()
+        self.__mutex_queue.put((f"{self.task_name}-{self.__uuid}", self.__storage.mutex))
         self.logger.info("CONDITIONS_PASSED")
 
-    def _prep_run(self, queue: Queue=None, args: Iterable[Any]=None,
-            kwargs: Mapping[str, Any]=None) -> None:
+    def _prep_run(self, log_queue: Queue=None, mutex_queue: Queue=None, uuid: str=None,
+            args: Iterable[Any]=None, kwargs: Mapping[str, Any]=None) -> None:
         """
         Prepares for a running of main function for logging
 
-        :params queue: Multiprocess Queue connected to logging QueueListener
+        :params log_queue: Multiprocess Queue connected to logging QueueListener
         :param args: Any main method arguments
         :param kwargs: Keyword arguments for main method
         :returns: None
         """
-        tmp_handler = QueueHandler(queue)
+        self.__mutex_queue = mutex_queue
+        self.__uuid = uuid
+        tmp_handler = QueueHandler(log_queue)
         tmp_handler.setLevel(self.log_level)
         self.logger.setLevel(self.log_level)
         if args is None:
@@ -182,10 +187,10 @@ class BaseTask():
             kwargs = {}
         # Check even if it is a logger or loggerAdapter
         if isinstance(self.logger, logging.Logger):
-            self.logger.addHandler(QueueHandler(queue))
+            self.logger.addHandler(QueueHandler(log_queue))
         elif isinstance(self.logger, logging.LoggerAdapter):
             self.logger.logger.setLevel(self.log_level)
-            self.logger.logger.addHandler(QueueHandler(queue))
+            self.logger.logger.addHandler(QueueHandler(log_queue))
         try:
             self.main(*args, **kwargs)
         except Exception as excep:          # pylint: disable=broad-except

@@ -2,6 +2,6 @@
 """Init script for storage models and abstraction
 """
 
-from observer.job import Job
+from observer.task_process import TaskProcess
 from observer.task import BaseTask
-from observer.job_runner import Runner
+from observer.task_runner import Runner
