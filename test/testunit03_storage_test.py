@@ -2,65 +2,71 @@
 """
 
 import datetime
+import tarfile
 import unittest
 from pathlib import Path
-import sys
-import tarfile
 
-_LIB_PATH = Path(__file__).parent.parent.parent.parent
-if str(_LIB_PATH) not in sys.path:
-    sys.path.append(str(_LIB_PATH))
-
-from observer.storage.models.local_filesystem import LocalFile
-from observer.storage.models.remote_filesystem import RemoteFile
-from observer.storage.models.storage_models import (generate_ssh_interface,
-                                                    remote_path_to_storage_loc,
-                                                    path_to_storage_location)
-from observer.storage.storage import Storage
-
-from test.observer_tests.storage.models.local_file_tests import get_local_file_suite
-from test.observer_tests.storage.models.ssh.ssh_tests import get_ssh_suite
-from test.observer_tests.storage.models.ssh.paramiko_tests import get_paramiko_suite
-from test.observer_tests.storage.models.remote_file_tests import get_remote_file_tests
+from observer.storage.models.local_filesystem import \
+    LocalFile  # pylint: disable=wrong-import-position
+from observer.storage.models.remote_filesystem import \
+    RemoteFile  # pylint: disable=wrong-import-position
+from observer.storage.models.storage_models import \
+    generate_ssh_interface  # pylint: disable=wrong-import-position
+from observer.storage.models.storage_models import \
+    path_to_storage_location  # pylint: disable=wrong-import-position
+from observer.storage.models.storage_models import \
+    remote_path_to_storage_loc  # pylint: disable=wrong-import-position
+from observer.storage.storage import \
+    Storage  # pylint: disable=wrong-import-position
 
 _BASE_LOC = Path(__file__).parent.parent.joinpath('tmp')
 
-_DOCKER_SSH_DIR = Path(__file__).parent.joinpath('models/ssh/docker_files')
-
 try:
-    from observer.storage.models.ssh.paramiko_conn import ParamikoConn # pylint: disable=unused-import
-    _HAS_PARAMIKO = True
-except ImportError:
-    _HAS_PARAMIKO = False
+    from test.test_libraries.docker_image import DockerImage
 
-try:
-    from test.observer_tests.storage.models.ssh.ssh_tests import DockerImage
-    from docker.errors import DockerException
+    from docker.errors import DockerException  # pylint: disable=unused-import
     _HAS_DOCKER = True
 except ImportError:
     _HAS_DOCKER = False
 
+try:
+    import paramiko  # pylint: disable=unused-import
+    _HAS_PARAMIKO = True
+except ImportError:
+    _HAS_PARAMIKO = False
 
-class Test03StorageTesting(unittest.TestCase):
+
+class TestCase05StorageTesting(unittest.TestCase):
     """Storage testing with local and """
 
-    def __init__(self, methodName: str = ...) -> None:
-        super().__init__(methodName)
-        base_path = _BASE_LOC
-        self.storage = Storage(storage_config={
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.storage = Storage(storage_config={
             'base_loc': {
                 'config_type': 'local_filesystem',
                 'config': {
-                    'loc': base_path,
+                    'loc': _BASE_LOC,
                     'is_dir': True
                 }
             }
         })
-        self.ssh_interface =  generate_ssh_interface(_DOCKER_SSH_DIR\
-            .joinpath('test_id_rsa'), 'localhost', 'test_user', port=2222)
-        self.local_file: LocalFile = path_to_storage_location(_BASE_LOC.joinpath('test.txt'), False)
-        self.remote_ref: RemoteFile = remote_path_to_storage_loc(Path('/config/test2.txt'),
-            self.ssh_interface, False)
+        priv_key = Path(__file__).parent\
+            .joinpath('docker_files/test_id_rsa').absolute()
+        pub_key = Path(__file__).parent\
+            .joinpath('docker_files/test_id_rsa.pub').absolute()
+        cls._docker_ref = DockerImage(priv_key, pub_key)
+        cls._docker_ref.start()
+        cls.ssh_interface = generate_ssh_interface(priv_key, 'localhost', 'test_user', port=2222)
+        cls.local_file: LocalFile = path_to_storage_location(_BASE_LOC.joinpath('test.txt'), False)
+        cls.remote_ref: RemoteFile = remote_path_to_storage_loc(Path('/config/test2.txt'),
+            cls.ssh_interface, False)
+        return super().setUpClass()
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        cls._docker_ref.stop()
+        cls._docker_ref.delete()
+        return super().tearDownClass()
 
     def test01_report_date(self):
         """Testing for report date"""
@@ -102,7 +108,7 @@ class Test03StorageTesting(unittest.TestCase):
         self.storage.data_loc = new_loc
         assert self.storage.data_loc.absolute_path == new_loc.absolute_path\
             .joinpath(f'data_{self.storage.report_date_str}')
-        self.storage.data_loc = orig_loc
+        self.storage.data_loc = orig_loc.parent
 
     def test06_report_loc(self):
         """Testing for reporting location"""
@@ -113,7 +119,7 @@ class Test03StorageTesting(unittest.TestCase):
         self.storage.report_loc = new_loc
         assert self.storage.report_loc.absolute_path == new_loc.absolute_path\
             .joinpath(f'report_{self.storage.report_date_str}')
-        self.storage.report_loc = orig_loc
+        self.storage.report_loc = orig_loc.parent
 
     def test07_archive_loc(self):
         """Testing for archive location"""
@@ -124,7 +130,7 @@ class Test03StorageTesting(unittest.TestCase):
         self.storage.archive_loc = new_loc
         assert self.storage.archive_loc.absolute_path == new_loc.absolute_path\
             .joinpath(f'archive_{self.storage.report_date_str}')
-        self.storage.archive_loc = orig_loc
+        self.storage.archive_loc = orig_loc.parent
 
     def test08_tmp_loc(self):
         """Testing for temp location"""
@@ -196,7 +202,7 @@ class Test03StorageTesting(unittest.TestCase):
 
     def test15_rotate_location(self):
         """Testint file rotation"""
-        self.local_file.create(False, True)
+        self.local_file.create(True, True)
         tmp_loc = path_to_storage_location(_BASE_LOC.joinpath('test.txt.old0'), False)
         tmp_loc1 = path_to_storage_location(_BASE_LOC.joinpath('test.txt.old1'), False)
         assert self.local_file.exists() & ~(tmp_loc.exists() | tmp_loc1.exists())
@@ -254,32 +260,5 @@ class Test03StorageTesting(unittest.TestCase):
         tmp_file.close()
         self.storage.archive_file.delete()
 
-def get_storage_suite() -> unittest.TestSuite:
-    """Test suite generator for storage tests"""
-    print("Gathering storage related tests")
-    suite = unittest.TestSuite()
-    suite.addTest(get_local_file_suite())
-    if _HAS_DOCKER:
-        suite.addTest(get_ssh_suite())
-        suite.addTest(get_paramiko_suite())
-        suite.addTest(get_remote_file_tests())
-    else:
-        print("Cannot test remote files without Docker")
-    suite.addTest(unittest.makeSuite(Test03StorageTesting))
-    return suite
-
-if __name__ == '__main__' or 'test.observer_tests.storage.storage_tests':
-    if _HAS_DOCKER:
-        try:
-            tmp_image = DockerImage(ssh_key=_DOCKER_SSH_DIR.joinpath('test_id_rsa'),
-                ssh_pub_key=_DOCKER_SSH_DIR.joinpath('test_id_rsa.pub'))
-            tmp_image.start()
-            print("Docker started")
-        except DockerException as exc:
-            raise RuntimeError('Issue starting docker, library loaded but docker not running') \
-                from exc
-    unittest.TextTestRunner(verbosity=2).run(get_storage_suite())
-    if _HAS_DOCKER:
-        tmp_image.stop()
-        tmp_image.delete()
-        print("Docker cleaned")
+if __name__ == "__main__":
+    unittest.main(verbosity=2)

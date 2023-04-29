@@ -72,7 +72,7 @@ def _gen_ssh_command(command: _SupportedCommands, path: Path, is_dir: bool=None,
         elif not is_dir:
             command_l.append('-f')
         else:
-            raise Exception("Unexpected exception")
+            raise RuntimeError("Unexpected exception")
         command_l.append(str(path))
     elif command=='mv':
         if dest_path is None:
@@ -478,7 +478,7 @@ class RemoteSSHConfig(dict):
             rsync_bin: Path=None, remote_rsync_bin: Path=None):
         super().__init__()
         if not ssh_key.exists():
-            FileNotFoundError(f"SSH Key doesn't exist: {ssh_key.absolute()}")
+            raise FileNotFoundError(f"SSH Key doesn't exist: {ssh_key.absolute()}")
         self['ssh_key'] = ssh_key.absolute()
         self['host'] = host
         self['port'] = port
