@@ -5,9 +5,9 @@ import unittest
 from pathlib import Path
 import sys
 
-_BASE_LOC = Path(__file__).parent.parent.parent.joinpath('tmp')
+_BASE_LOC = Path(__file__).parent.joinpath('tmp')
 
-_LIB_BASE = Path(__file__).absolute().parent.parent.parent.parent.parent
+_LIB_BASE = Path(__file__).absolute().parent.parent
 if str(_LIB_BASE) not in sys.path:
     sys.path.insert(1, str(_LIB_BASE))
 
@@ -15,19 +15,21 @@ from observer.storage.models import LocalFile
 from observer.storage.models.storage_models import path_to_storage_location
 
 
-class Test01LocalFiles(unittest.TestCase):
+class TestCase01LocalFiles(unittest.TestCase):
     """Testing for LocalFile objects"""
 
-    def __init__(self, methodName: str = ...) -> None:
-        super().__init__(methodName)
-        self.local_file_path = _BASE_LOC.joinpath('test.txt')
-        self.local_file: LocalFile = path_to_storage_location(self.local_file_path, False)
-        self.new_local_file: LocalFile = path_to_storage_location(_BASE_LOC.joinpath('diff.txt'),
+    @classmethod
+    def setUpClass(cls) -> None:
+        """Setting up for class testing"""
+        cls.local_file_path = _BASE_LOC.joinpath('test.txt')
+        cls.local_file: LocalFile = path_to_storage_location(cls.local_file_path, False)
+        cls.new_local_file: LocalFile = path_to_storage_location(_BASE_LOC.joinpath('diff.txt'),
             False)
-        self.local_dir_path = _BASE_LOC.joinpath('test_dir')
-        self.local_dir: LocalFile = path_to_storage_location(self.local_dir_path, True)
-        self.new_local_dir: LocalFile = path_to_storage_location(_BASE_LOC.joinpath('diff_dir'),
+        cls.local_dir_path = _BASE_LOC.joinpath('test_dir')
+        cls.local_dir: LocalFile = path_to_storage_location(cls.local_dir_path, True)
+        cls.new_local_dir: LocalFile = path_to_storage_location(_BASE_LOC.joinpath('diff_dir'),
             True)
+        return super().setUpClass()
 
     def test01_properties(self):
         """Testing properties"""
@@ -182,11 +184,5 @@ class Test01LocalFiles(unittest.TestCase):
         """Testing archive reference production"""
         assert self.local_file.absolute_path == self.local_file.get_archive_ref()
 
-def get_local_file_suite() -> unittest.TestSuite:
-    """provides local file based tests"""
-    suite = unittest.TestSuite()
-    suite.addTests(unittest.makeSuite(Test01LocalFiles))
-    return suite
-
 if __name__ == "__main__":
-    unittest.main(__name__, verbosity=2)
+    unittest.main(verbosity=2)
