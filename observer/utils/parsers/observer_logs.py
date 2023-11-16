@@ -1,22 +1,24 @@
 """observer_logs.py
 
 Author: neo154
-Version: 0.1.0
-Date Modified: 2023-04-29
+Version: 0.2.0
+Date Modified: 2023-11-15
 
 Parser for log parinsg using re and group extraction
 """
 
 import re
 from datetime import date
-from typing import Iterator, Union, Mapping, List, Dict
-import pandas as pd
+from typing import Dict, Iterator, List, Mapping, Union
+
 import numpy as np
+import pandas as pd
+
 from observer.storage.models import StorageLocation
-from observer.storage.models import LocalFile, RemoteFile
 
 _DATETIME_PATTERN = r'(?P<datetime>[0-9]{4}-[0-1][0-9]-[0-3][0-9] [0-2][0-9]:[0-5][0-9]:[0-5][0-9])'
-_HOST_PATTERN = r'(?P<host_id>[0-9\.\-\_a-zA-z]+)'
+_HOST_PATTERN = r'(?P<host_id>[0-9\.\-\_a-zA-Z]+)'
+_RUN_TYPE_PATTERN = r'(?P<run_type>[0-9a-zA-Z\_]+)'
 _JOBTYPE_PATTERN = r'(?P<task_type>[a-zA-Z\_\-0-9\.]+)'
 _JOBNAME_PATTERN = r'(?P<task_name>[a-zA-Z\_\-0-9\.]+)'
 _UUID_PATTERN = r'(?P<uuid>[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})'
@@ -26,11 +28,13 @@ _LOG_LEVEL_PATTERN = r'(?P<log_level>[A-Za-z]+):'
 _MESSAGE_PATTERN = r'(?P<message>.*)'
 
 _LOG_PATTERN = re.compile(
-    f"{_DATETIME_PATTERN} {_HOST_PATTERN} {_JOBTYPE_PATTERN} {_JOBNAME_PATTERN} {_UUID_PATTERN} "\
-        F"{_PATH_PATTERN} {_LINENO_PATTERN} {_LOG_LEVEL_PATTERN} {_MESSAGE_PATTERN}"
+    f"{_DATETIME_PATTERN} {_HOST_PATTERN} {_RUN_TYPE_PATTERN} {_JOBTYPE_PATTERN} "\
+        f"{_JOBNAME_PATTERN} {_UUID_PATTERN} {_PATH_PATTERN} {_LINENO_PATTERN} "\
+        f"{_LOG_LEVEL_PATTERN} {_MESSAGE_PATTERN}"
 )
 
 LogTypes = Union[StorageLocation, List[Mapping[str, str]], Iterator]
+
 
 def _log_generator(log_loc: StorageLocation, chunk_size: int=1) -> Iterator:
     """
@@ -78,25 +82,36 @@ def parse_non_match_logs(log_loc: StorageLocation) -> List[str]:
     return [ line for line in log_loc.open('r') if _LOG_PATTERN.match(line) is None ]
 
 def logs_2_df(logs: LogTypes) -> pd.DataFrame:
-    """Converting logs from file or other means to data frame for analysis"""
+    """
+    Converting logs from file or other means to data frame for analysis
+
+    :param logs: LogTypes for storage of file or file-like objects that can be parsed for logs
+    :returns: DataFrame of full raw logs
+    """
     logs_l: List[Mapping[str, str]] = None
-    if isinstance(logs, (LocalFile, RemoteFile)):
+    if isinstance(logs, StorageLocation):
         logs_l = parse_log_object(log_loc=logs)
     elif isinstance(logs, Iterator):
         logs_l = list(logs)
     else:
         logs_l = logs
     ret_df = pd.DataFrame(logs_l)
-    cat_cols = ['host_id', 'task_type', 'task_name', 'uuid', 'file_name', 'log_level', 'message']
+    cat_cols = ['host_id', 'run_type', 'task_type', 'task_name', 'uuid', 'file_name', 'log_level',
+        'message']
     for col in cat_cols:
         ret_df[col] = ret_df[col].astype('category')
     ret_df['datetime'] = pd.to_datetime(ret_df['datetime'])
     ret_df['line_number'] = ret_df['line_number'].astype('uint8')
     return ret_df
 
-def analyze_task_logs(logs_df: pd.DataFrame) -> Dict:
-    """Analyzes logs for a particular task using the name"""
-    _start_message = 'START_JOB'
+def analyze_task(logs_df: pd.DataFrame) -> Dict:
+    """
+    Analyzes logs for a particular task using the name
+
+    :param logs_df: Dataframe of logs limited to a single job type on a host and run_type
+    :returns: Dictionary containing summary of jobs and expectations that job
+    """
+    _start_message = 'JOB_START'
     _condition_message = 'CONDITIONS_PASSED'
     _completed_message = 'JOB_COMPLETED'
     _failed_message = 'JOB_FAILED'
@@ -132,6 +147,7 @@ def analyze_task_logs(logs_df: pd.DataFrame) -> Dict:
         succeeded_runs = (valid_runs['message']==_completed_message).sum()
     return {
         'host_id': logs_df['host_id'].unique()[0],
+        'run_type': logs_df['run_type'].unique()[0],
         'task_type': logs_df['task_type'].unique()[0],
         'task_name': logs_df['task_name'].unique()[0],
         'start_time': start_time,
@@ -148,18 +164,45 @@ def analyze_task_logs(logs_df: pd.DataFrame) -> Dict:
         'last_message': last_run_message
     }
 
-def analyze_days_tasks(logs_df: pd.DataFrame) -> pd.DataFrame:
-    """Analyzes logs for a single day"""
-    return pd.DataFrame([ analyze_task_logs(logs_df[ logs_df['task_name']==name ]) for name in \
+def analyze_task_logs(logs_df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Analyzes logs for each given tasks in provided logs dataframe
+
+    :param logs_df: Dataframe containing logs with one or more given tasks
+    :returns: DataFrame containing summary information of the Tasks
+    """
+    return pd.DataFrame([ analyze_task(logs_df[ logs_df['task_name']==name ]) for name in \
         logs_df['task_name'].unique()])
 
+def analyze_run_types(logs_df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Analyzes a hosts logs for each type of run that was on that host, then broken into tasks
+
+    :param logs_df: Dataframe of logs with one mor more run_types separations
+    :returns: Dataframe of summary of jobs separated by run_type
+    """
+    return pd.concat([analyze_task_logs(logs_df[ logs_df['run_type']==run_type ]) for run_type \
+        in logs_df['run_type'].unique()], axis=0, ignore_index=True)
+
 def analyze_host_logs(logs_df: pd.DataFrame) -> pd.DataFrame:
-    """Analyzes logs for a given host """
-    return pd.concat([analyze_days_tasks(logs_df[ logs_df['host_id']==host ]) for host in \
+    """
+    Analyzes logs for a given host instance
+
+    :param logs_df: Dataframe of raw logs with one or more hosts for analysis
+    :returns: Dataframe with analyzed logs by host
+    """
+    return pd.concat([analyze_run_types(logs_df[ logs_df['host_id']==host ]) for host in \
         logs_df['host_id'].unique() ], axis=0, ignore_index=True)
 
 def analyze_logs(logs_df: Union[pd.DataFrame, LogTypes], analysis_date: date=None) -> pd.DataFrame:
-    """Analyzes logs and separtes them into sections for analysis for each task type and name"""
+    """
+    Analyzes logs and separtes them into sections for analysis for each task type, name, and type
+    of run, limits analysis to a single day's worth of logs
+
+    :param logs_df: Dataframe of logs or log type objects that can be parsed to raw logs in DF
+    :param analysis_date: Date object determining what date the logs are limited to
+    :returns: Dataframe of fully analyzed set of jobs
+    """
     if analysis_date is None:
         analysis_date = date.today()
     if not isinstance(logs_df, pd.DataFrame):

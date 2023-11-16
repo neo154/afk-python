@@ -1,20 +1,21 @@
 """xml.py
 
 Author: neo154
-Version: 0.1.0
-Date Modified: 2022-06-11
+Version: 0.1.1
+Date Modified: 2022-11-15
 
 Parser for XML parsing using the defused XML library and a few custom make parsers
 """
 
 from logging import Logger
-from typing import Dict, Literal, Union, Any, List
+from typing import Any, Dict, List, Literal, Union
 from xml.dom.minidom import Document, Element, Node
 
-from pandas import to_datetime
 from defusedxml import minidom
+from pandas import to_datetime
 
 from observer.storage.models.storage_models import StorageLocation
+
 
 class XMLMappingError(Exception):
     """Exceptions for XMLMapping and check"""
