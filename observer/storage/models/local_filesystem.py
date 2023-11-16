@@ -2,8 +2,8 @@
 """local_filesystem.py
 
 Author: neo154
-Version: 0.1.0
-Date Modified: 2023-04-28
+Version: 0.2.0
+Date Modified: 2023-11-24
 
 Defines interactions and local filesystem objects
 this will alow for abstraction at storage level for just using and
@@ -14,10 +14,11 @@ from io import BufferedReader, BufferedWriter, FileIO, TextIOWrapper
 from logging import Logger
 from pathlib import Path
 from shutil import copy2, copytree
-from typing import Literal, Union, Any
+from typing import Dict, Generator, Literal, Union
 
-from observer.storage.models.storage_model_configs import LocalFSConfig
 from observer.observer_logging import generate_logger
+from observer.storage.models.storage_location import StorageLocation
+from observer.storage.utils import ValidPathArgs, confirm_path_arg
 
 _DEFAULT_LOGGER = generate_logger(__name__)
 
@@ -36,26 +37,18 @@ def _recurse_delete(path: Path, _missing_ok: bool=False) -> None:
             _recurse_delete(sub_p, _missing_ok)
         path.rmdir()
 
-class LocalFile():
+class LocalFile(StorageLocation):
     """Class that defines how a local file is defined"""
 
-    def __init__(self, local_obj: Union[dict, LocalFSConfig], is_dir: bool=False) -> None:
-        # If it isn't already a local fs and just the config, then just type it
-        if isinstance(local_obj, dict):
-            local_obj = LocalFSConfig(**local_obj)
-        # Then get necessary datapoints
-        self._absolute_path = local_obj['loc']
-        if self.absolute_path.suffix != '' and (is_dir or local_obj['is_dir']):
-            raise ValueError(
-                'Incompatiable Types, path provided has suffixes and was declared as a dir'
-            )
+    def __init__(self, path_ref: ValidPathArgs) -> None:
+        self._absolute_path = confirm_path_arg(path_ref).absolute()
         self.__type = "local_filesystem"
         self.name = self.absolute_path.name
 
     def __str__(self) -> str:
         return f"Name:{self.name}, type:{self.__type}, path:{self.absolute_path}"
 
-    def __eq__(self, __o) -> bool:
+    def __eq__(self, __o: StorageLocation) -> bool:
         return isinstance(__o, LocalFile)&(self.absolute_path==__o.absolute_path)
 
     @property
@@ -95,13 +88,13 @@ class LocalFile():
         return self.__type
 
     @property
-    def parent(self) -> Any:
+    def parent(self) -> StorageLocation:
         """
         Parent of the current LocalFile reference
 
         :returns: LocalFile object of parent reference
         """
-        return LocalFile(LocalFSConfig(loc=self.absolute_path.parent), is_dir=True)
+        return LocalFile(self.absolute_path.parent)
 
     def exists(self) -> bool:
         """
@@ -127,17 +120,18 @@ class LocalFile():
         """
         return self.absolute_path.is_file()
 
-    def create(self, overwrite: bool=False, create_parent: bool=False) -> None:
+    def touch(self, overwrite: bool=False, parents: bool=False) -> None:
         """
         Creates an empty file at this location
 
         :returns: None
         """
-        if (not self.absolute_path.parent.exists()) and create_parent:
+        if (not self.absolute_path.parent.exists()) and parents:
             self.absolute_path.parent.mkdir(parents=True)
         self.absolute_path.touch(exist_ok=overwrite)
 
-    def read(self, logger: Logger=_DEFAULT_LOGGER) -> str:
+    def read(self, mode: Literal['r', 'rb']='r', encoding: str='utf-8',
+            logger: Logger=_DEFAULT_LOGGER) -> str:
         """
         Reads file and returns a binary string of the file contents
         *NOTE: Starting simple and then can get more complex later
@@ -146,11 +140,14 @@ class LocalFile():
         """
         if not self.absolute_path.is_file():
             raise RuntimeError("File cannot be read, doesn't exist or isn't a file")
-        ret_contents = ''
         logger.debug("Reading contents of '%s' and returning string", str(self.absolute_path))
-        with self.absolute_path.open('r') as tmp_ref:
-            ret_contents = tmp_ref.read()
-        return ret_contents
+        if mode=='r':
+            with self.absolute_path.open(mode, -1, encoding) as tmp_ref:
+                return tmp_ref.read()
+        if mode=='rb':
+            with self.absolute_path.open('rb') as tmp_ref:
+                return tmp_ref.read()
+        raise ValueError(f"Do not recognize mode provided: {mode}")
 
     def open(self, mode: Literal['r', 'rb', 'w', 'wb', 'a'], encoding: str='utf-8') \
             -> Union[TextIOWrapper, BufferedReader, BufferedWriter, FileIO]:
@@ -163,7 +160,8 @@ class LocalFile():
             raise RuntimeError("File cannot be read, doesn't exist or isn't a file")
         return self.absolute_path.open(mode, encoding=encoding)
 
-    def delete(self, missing_ok: bool=False, logger: Logger=_DEFAULT_LOGGER) -> None:
+    def delete(self, missing_ok: bool=False, recurisve: bool=False,
+            logger: Logger=_DEFAULT_LOGGER) -> None:
         """
         Deletes local file
 
@@ -227,22 +225,31 @@ class LocalFile():
                 return
             counter += 1
 
-    def create_loc(self, parents: bool=False) -> None:
+    def mkdir(self, parents: bool=False) -> None:
         """
         Creates directory and parents if it is declared
         """
         self.absolute_path.mkdir(parents=parents, exist_ok=True)
 
-    def join_loc(self, loc_addition: Union[str, Path], as_dir: bool=False) -> Any:
+    def iter_location(self) -> Generator[StorageLocation, None, None]:
+        """
+        Iterates location for any subfiles
+
+        :returns: Generator of locations in this current directory
+        """
+        if not self.is_dir():
+            raise AssertionError("Path identified doesn't exist or isn't dir")
+        for sub_dir in self.absolute_path.iterdir():
+            yield LocalFile(sub_dir)
+
+    def join_loc(self, loc_addition: str) -> StorageLocation:
         """
         Joins current location given to another based on the path or string
 
         :param loc_addition: String or path to generate local file ref for usage
         :param as_dir: Boolean of whether or not to treat location as dir
         """
-        if isinstance(loc_addition, str):
-            loc_addition = self.absolute_path.joinpath(loc_addition)
-        return LocalFile(LocalFSConfig(loc=loc_addition), is_dir=as_dir)
+        return LocalFile(self.absolute_path.joinpath(loc_addition))
 
     def get_archive_ref(self) -> Path:
         """
@@ -251,3 +258,11 @@ class LocalFile():
         :returns: Path object for archive file creation
         """
         return self.absolute_path
+
+    def to_dict(self) -> Dict:
+        """
+        Gets dictionary entry that would fit this type of configuration
+
+        :returns: Dictionary entry for a local filesystem
+        """
+        return {'path_ref': str(self.absolute_path)}
