@@ -3,11 +3,9 @@
 
 import unittest
 from pathlib import Path
+from stat import S_ISDIR, S_ISREG
 
-from observer.storage.models.ssh.ssh_conn import SSHBaseConn
-from observer.storage.models.storage_models import (generate_ssh_interface,
-                                                    path_to_storage_location,
-                                                    remote_path_to_storage_loc)
+from observer.storage.models.storage_models import generate_ssh_interface
 
 try:
     from test.test_libraries.docker_image import DockerImage
@@ -33,123 +31,8 @@ def recurse_delete(path: Path):
             recurse_delete(sub_p)
         path.rmdir()
 
-@unittest.skipIf(not _HAS_DOCKER, "Docker not located")
-class TestCase02SSHTesting(unittest.TestCase):
-    """SSH Unit testing"""
-
-    @classmethod
-    def setUpClass(cls) -> None:
-        priv_key = Path(__file__).parent\
-            .joinpath('docker_files/test_id_rsa').absolute()
-        pub_key = Path(__file__).parent\
-            .joinpath('docker_files/test_id_rsa.pub').absolute()
-        cls._docker_ref = DockerImage(priv_key, pub_key)
-        cls._docker_ref.start()
-        cls.test_connection = SSHBaseConn(ssh_key=priv_key, host='localhost',
-                userid='test_user', port=2222)
-        return super().setUpClass()
-
-    @classmethod
-    def tearDownClass(cls) -> None:
-        cls._docker_ref.stop()
-        cls._docker_ref.delete()
-        return super().tearDownClass()
-
-    def test01_connection(self):
-        """Testing basic connection"""
-        assert self.test_connection.test_ssh_access()
-
-    def test02_exist(self):
-        """Testing exists"""
-        assert self.test_connection.exists('/usr/bin/')
-
-    def test03_is_dir(self):
-        """Testing is_dir"""
-        assert self.test_connection.is_dir('/usr/bin/')
-
-    def test04_is_file(self):
-        """Testing is_file"""
-        assert self.test_connection.exists('/usr/bin/')
-        assert not self.test_connection.is_file('/usr/bin/')
-
-    def test05_touch(self):
-        """Testing touch command"""
-        assert not self.test_connection.exists('/config/test.file')
-        self.test_connection.touch('/config/test.file')
-        assert self.test_connection.exists('/config/test.file')
-
-    def test06_delete(self):
-        """Tetsing delete command"""
-        self.test_connection.touch('/config/test.file2')
-        assert self.test_connection.exists('/config/test.file2')
-        self.test_connection.delete('/config/test.file2')
-        assert not self.test_connection.exists('/config/test.file2')
-
-    def test07_push_file(self):
-        """Testing push_file"""
-        assert not self.test_connection.exists('/config/tmp_file.txt')
-        with open('./test/tmp/tmp_file.txt', 'w', encoding='utf-8') as tmp_file:
-            tmp_file.write('HI THERE')
-        self.test_connection.push_file(source_path=Path("./test/tmp/tmp_file.txt"),
-            dest_path="/config/tmp_file.txt")
-        Path("./test/tmp/tmp_file.txt").unlink()
-        assert self.test_connection.exists('/config/tmp_file.txt')
-
-    def test08_pull_file(self):
-        """Test pull_file"""
-        with open('./test/tmp/tmp_file2.txt', 'w', encoding='utf-8') as tmp_file:
-            tmp_file.write('HI THERE')
-        self.test_connection.push_file(source_path=Path("./test/tmp/tmp_file2.txt"),
-            dest_path="/config/tmp_file2.txt")
-        Path("./test/tmp/tmp_file2.txt").unlink()
-        assert not Path("./test/tmp/pulled_file2.txt").exists()
-        self.test_connection.pull_file(source_path="/config/tmp_file2.txt",
-            dest_path=Path("./test/tmp/pulled_file.txt"))
-        assert Path("./test/tmp/pulled_file.txt").exists()
-        Path("./test/tmp/pulled_file.txt").unlink()
-
-    def test09_move(self):
-        """Test move file"""
-        self.test_connection.touch('/config/orig_file.txt')
-        assert not self.test_connection.is_file('/config/moved_file.txt')
-        self.test_connection.move("/config/orig_file.txt", "/config/moved_file.txt")
-        assert self.test_connection.is_file("/config/moved_file.txt")
-
-    def test10_copy(self):
-        """Test copy file"""
-        self.test_connection.touch("/config/orig_copy_file.txt")
-        assert self.test_connection.is_file("/config/orig_copy_file.txt") \
-            and not self.test_connection.is_file("/config/copied_file.txt")
-        self.test_connection.copy("/config/orig_copy_file.txt", "/config/copied_file.txt")
-        assert self.test_connection.is_file("/config/orig_copy_file.txt") \
-            and self.test_connection.is_file("/config/copied_file.txt")
-        self.test_connection.delete("/config/orig_copy_file.txt")
-        self.test_connection.delete("/config/copied_file.txt")
-        assert not self.test_connection.is_file("/config/orig_copy_file.txt") \
-            and not self.test_connection.is_file("/config/copied_file.txt")
-
-    def test11_create_loc(self):
-        """Testing create location"""
-        self.test_connection.create_loc('/config/test_dir/yes')
-        self.test_connection.create_loc('/config/test_dir/no/')
-        assert self.test_connection.is_dir('/config/test_dir')
-        assert self.test_connection.is_dir('/config/test_dir/yes')
-        assert self.test_connection.is_dir('/config/test_dir/no')
-
-    def test12_recurse_del(self):
-        """Testing recursive deletes"""
-        self.test_connection.create_loc('/config/test_dir_recurse/yes')
-        self.test_connection.create_loc('/config/test_dir_recurse/no/')
-        assert not self.test_connection.exists('/config/test_dir_recurse/yes/hi_there.txt')
-        self.test_connection.touch("/config/test_dir_recurse/yes/hi_there.txt")
-        assert self.test_connection.is_file("/config/test_dir_recurse/yes/hi_there.txt")
-        self.test_connection.delete("/config/test_dir_recurse")
-        assert not self.test_connection.is_file("/config/test_dir_recurse/yes/hi_there.txt")
-        assert not self.test_connection.is_dir("/config/test_dir_recurse")
-
-
 @unittest.skipIf(not (_HAS_DOCKER and _HAS_PARAMIKO), "Docker or Paramiko not located")
-class TestCase03ParamikoSSH(unittest.TestCase):
+class TestCase01ParamikoSSH(unittest.TestCase):
     """Set of SSH tests that are using Paramiko"""
 
     @classmethod
@@ -163,6 +46,7 @@ class TestCase03ParamikoSSH(unittest.TestCase):
         cls.test_connection = ParamikoConn(host='localhost', port=2222,
             ssh_key=priv_key,
             userid='test_user')
+        cls.priv_key = priv_key
         return super().setUpClass()
 
     @classmethod
@@ -179,29 +63,21 @@ class TestCase03ParamikoSSH(unittest.TestCase):
         """Testing exists"""
         assert self.test_connection.exists('/usr/bin/')
 
-    def test03_is_dir(self):
-        """Testing is_dir"""
-        assert self.test_connection.is_dir('/usr/bin/')
-
-    def test04_is_file(self):
-        """Testing is_file"""
-        assert self.test_connection.exists('/usr/bin/')
-        assert not self.test_connection.is_file('/usr/bin/')
-
-    def test05_touch(self):
+    def test03_touch(self):
         """Testing touch command"""
         assert not self.test_connection.exists('/config/test.file')
         self.test_connection.touch('/config/test.file')
-        assert self.test_connection.exists('/config/test.file')
+        assert self.test_connection.exists('/config/test.file') \
+            and S_ISREG(self.test_connection.stat('/config/test.file').st_mode)
 
-    def test06_delete(self):
+    def test04_delete(self):
         """Tetsing delete command"""
         self.test_connection.touch('/config/test.file2')
         assert self.test_connection.exists('/config/test.file2')
         self.test_connection.delete('/config/test.file2')
         assert not self.test_connection.exists('/config/test.file2')
 
-    def test07_push_file(self):
+    def test05_push_file(self):
         """Testing push_file"""
         assert not self.test_connection.exists('/config/tmp_file.txt')
         with open('./test/tmp/tmp_file.txt', 'w', encoding='utf-8') as tmp_file:
@@ -210,7 +86,7 @@ class TestCase03ParamikoSSH(unittest.TestCase):
             dest_path="/config/tmp_file.txt")
         assert self.test_connection.exists('/config/tmp_file.txt')
 
-    def test08_pull_file(self):
+    def test06_pull_file(self):
         """Test pull_file"""
         with open('./test/tmp/tmp_file2.txt', 'w', encoding='utf-8') as tmp_file:
             tmp_file.write('HI THERE')
@@ -223,48 +99,68 @@ class TestCase03ParamikoSSH(unittest.TestCase):
         assert Path("./test/tmp/pulled_file.txt").exists()
         Path("./test/tmp/pulled_file.txt").unlink()
 
-    def test09_move(self):
+    def test07_move(self):
         """Test move file"""
         self.test_connection.touch('/config/orig_file.txt')
-        assert not self.test_connection.is_file('/config/moved_file.txt')
+        assert not self.test_connection.exists('/config/moved_file.txt')
         self.test_connection.move("/config/orig_file.txt", "/config/moved_file.txt")
-        assert self.test_connection.is_file("/config/moved_file.txt")
+        assert self.test_connection.exists("/config/moved_file.txt")
 
-    def test10_copy(self):
+    def test08_copy(self):
         """Test copy file"""
         self.test_connection.touch("/config/orig_copy_file.txt")
-        assert self.test_connection.is_file("/config/orig_copy_file.txt") \
-            and not self.test_connection.is_file("/config/copied_file.txt")
+        assert self.test_connection.exists("/config/orig_copy_file.txt")
+        assert not self.test_connection.exists("/config/copied_file.txt")
         self.test_connection.copy("/config/orig_copy_file.txt", "/config/copied_file.txt")
-        assert self.test_connection.is_file("/config/orig_copy_file.txt") \
-            and self.test_connection.is_file("/config/copied_file.txt")
+        assert self.test_connection.exists("/config/orig_copy_file.txt") \
+            and self.test_connection.exists("/config/copied_file.txt")
         self.test_connection.delete("/config/orig_copy_file.txt")
         self.test_connection.delete("/config/copied_file.txt")
-        assert not self.test_connection.is_file("/config/orig_copy_file.txt") \
-            and not self.test_connection.is_file("/config/copied_file.txt")
+        assert not self.test_connection.exists("/config/orig_copy_file.txt")
+        assert not self.test_connection.exists("/config/copied_file.txt")
 
-    def test11_create_loc(self):
-        """Testing create location"""
-        self.test_connection.create_loc('/config/test_dir/yes')
-        self.test_connection.create_loc('/config/test_dir/no/')
-        assert self.test_connection.is_dir('/config/test_dir')
-        assert self.test_connection.is_dir('/config/test_dir/yes')
-        assert self.test_connection.is_dir('/config/test_dir/no')
+    def test09_mkdir(self):
+        """Testing directory creation"""
+        self.test_connection.mkdir('/config/test_dir/yes', True)
+        self.test_connection.mkdir('/config/test_dir/no/')
+        assert self.test_connection.exists('/config/test_dir') \
+            and S_ISDIR(self.test_connection.stat(('/config/test_dir')).st_mode)
+        assert self.test_connection.exists('/config/test_dir/yes') \
+            and S_ISDIR(self.test_connection.stat(('/config/test_dir/yes')).st_mode)
+        assert self.test_connection.exists('/config/test_dir/no') \
+            and S_ISDIR(self.test_connection.stat(('/config/test_dir/no')).st_mode)
 
-    def test12_recurse_del(self):
+    def test10_recurse_del(self):
         """Testing recursive deletes"""
-        self.test_connection.create_loc('/config/test_dir_recurse/yes')
-        self.test_connection.create_loc('/config/test_dir_recurse/no/')
+        self.test_connection.mkdir('/config/test_dir_recurse/yes', True)
+        self.test_connection.mkdir('/config/test_dir_recurse/no/')
         assert not self.test_connection.exists('/config/test_dir_recurse/yes/hi_there.txt')
         self.test_connection.touch("/config/test_dir_recurse/yes/hi_there.txt")
-        assert self.test_connection.is_file("/config/test_dir_recurse/yes/hi_there.txt")
+        assert self.test_connection.exists("/config/test_dir_recurse/yes/hi_there.txt")
         self.test_connection.delete("/config/test_dir_recurse")
-        assert not self.test_connection.is_file("/config/test_dir_recurse/yes/hi_there.txt")
-        assert not self.test_connection.is_dir("/config/test_dir_recurse")
+        assert not self.test_connection.exists('/config/test_dir_recurse/yes/hi_there.txt')
+        assert not self.test_connection.exists('/config/test_dir_recurse')
 
+    def test11_export_interface(self):
+        """Tests exporting of ssh interface"""
+        exported_config = self.test_connection.export_config()
+        expected_config = {'ssh_key': str(self.priv_key), 'host': 'localhost',
+            'userid': 'test_user', 'port': 2222}
+        assert exported_config == expected_config
+        assert ParamikoConn(**exported_config)
+
+    def test12_iterdir(self):
+        """Testing dir iteration"""
+        self.test_connection.mkdir('/config/test_dir_recurse/yes', True)
+        files = ['file1.txt', 'file2.txt', 'file3.txt', 'file4.txt', 'file5.txt']
+        for file_ref in files:
+            self.test_connection.touch(f'/config/test_dir_recurse/yes/{file_ref}')
+        for new_file in self.test_connection.iterdir('/config/test_dir_recurse/yes'):
+            assert new_file in files
+        self.test_connection.delete('/config/test_dir_recurse/yes')
 
 @unittest.skipIf(not _HAS_DOCKER, "Docker wasn't found, won't run the test")
-class TestCase04RemoteFiles(unittest.TestCase):
+class TestCase02RemoteFiles(unittest.TestCase):
     """Testing for RemoteFiles objects"""
 
     @classmethod
@@ -278,20 +174,14 @@ class TestCase04RemoteFiles(unittest.TestCase):
         cls._base_path = Path(__file__).parent.joinpath('tmp')
         cls._remote_path = Path('/config')
         cls.ssh_interface = generate_ssh_interface(priv_key, 'localhost', 'test_user', port=2222)
-        cls.local_file: LocalFile = path_to_storage_location(cls._base_path.joinpath('test.txt'),
-            False)
+        cls.local_file = LocalFile(cls._base_path.joinpath('test.txt'))
         cls.remote_file_path = cls._remote_path.joinpath('test.txt')
-        cls.remote_file: RemoteFile = remote_path_to_storage_loc(cls.remote_file_path,
-            cls.ssh_interface, False)
-        cls.new_remote_file: RemoteFile = remote_path_to_storage_loc(cls._remote_path\
-            .joinpath('diff.txt'), cls.ssh_interface, False)
-        cls.local_dir: LocalFile = path_to_storage_location(cls._base_path.joinpath('test_dir'),
-            True)
+        cls.remote_file = RemoteFile(cls.remote_file_path, cls.ssh_interface)
+        cls.new_remote_file = RemoteFile(cls._remote_path.joinpath('diff.txt'), cls.ssh_interface)
+        cls.local_dir = LocalFile(cls._base_path.joinpath('test_dir'))
         cls.remote_dir_path = cls._remote_path.joinpath('test_dir')
-        cls.remote_dir: RemoteFile = remote_path_to_storage_loc(cls.remote_dir_path,
-            cls.ssh_interface, True)
-        cls.new_remote_dir: RemoteFile = remote_path_to_storage_loc(cls._remote_path\
-            .joinpath('diff_dir'), cls.ssh_interface, True)
+        cls.remote_dir = RemoteFile(cls.remote_dir_path, cls.ssh_interface)
+        cls.new_remote_dir = RemoteFile(cls._remote_path.joinpath('diff_dir'), cls.ssh_interface)
         return super().setUpClass()
 
     @classmethod
@@ -311,14 +201,12 @@ class TestCase04RemoteFiles(unittest.TestCase):
     def test02_exists(self):
         """Testing file system exists"""
         assert not self.remote_file.exists()
-        tmp_ref = remote_path_to_storage_loc(Path("/config"),
-            self.ssh_interface, True)
+        tmp_ref = RemoteFile(Path("/config"), self.ssh_interface)
         assert tmp_ref.exists()
 
     def test03_is_dir(self):
         """Testing is_dir functionality"""
-        tmp_ref = remote_path_to_storage_loc(Path("/config"),
-            self.ssh_interface, True)
+        tmp_ref = RemoteFile(Path("/config"), self.ssh_interface)
         assert not self.remote_dir.exists()
         assert not self.remote_dir.is_dir()
         assert not self.remote_dir.is_file()
@@ -328,8 +216,7 @@ class TestCase04RemoteFiles(unittest.TestCase):
 
     def test04_is_file(self):
         """Testing is file functionality"""
-        tmp_ref = remote_path_to_storage_loc(Path("/bin/bash"),
-            self.ssh_interface, True)
+        tmp_ref = RemoteFile(Path("/bin/bash"), self.ssh_interface)
         assert not self.remote_file.exists()
         assert not self.remote_file.is_dir()
         assert not self.remote_file.is_file()
@@ -337,10 +224,10 @@ class TestCase04RemoteFiles(unittest.TestCase):
         assert not tmp_ref.is_dir()
         assert tmp_ref.is_file()
 
-    def test05_create(self):
+    def test05_touch(self):
         """Testing file creation/touch"""
         assert not self.remote_file.exists()
-        self.remote_file.create()
+        self.remote_file.touch()
         assert self.remote_file.exists()
         assert self.remote_file.is_file()
         assert not self.remote_file.is_dir()
@@ -371,17 +258,17 @@ class TestCase04RemoteFiles(unittest.TestCase):
 
     def test08_delete(self):
         """Testing delete functionality"""
-        self.remote_dir.create_loc()
-        self.remote_file.create()
+        self.remote_dir.mkdir()
+        self.remote_file.touch()
         assert self.remote_file.is_file()
         assert self.remote_dir.is_dir()
         self.remote_file.delete()
         assert ~self.remote_file.exists()
         self.remote_dir.delete()
         assert ~self.remote_dir.exists()
-        tmp_file: RemoteFile = self.remote_dir.join_loc('extra.txt', False)
-        self.remote_dir.create_loc()
-        tmp_file.create()
+        tmp_file: RemoteFile = self.remote_dir.join_loc('extra.txt')
+        self.remote_dir.mkdir()
+        tmp_file.touch()
         assert self.remote_dir.is_dir() & tmp_file.exists()
         self.remote_dir.delete()
         assert ~(self.remote_dir.exists() | tmp_file.exists())
@@ -389,12 +276,12 @@ class TestCase04RemoteFiles(unittest.TestCase):
     def test09_move(self):
         """Testing move functionality"""
         if not self.remote_file.exists():
-            self.remote_file.create()
+            self.remote_file.touch()
         assert self.remote_file.exists() & ~self.new_remote_file.exists()
         self.remote_file.move(self.new_remote_file)
         assert ~self.remote_file.exists() & self.new_remote_file.exists()
         self.new_remote_file.delete()
-        self.remote_dir.create_loc()
+        self.remote_dir.mkdir()
         assert self.remote_dir.exists() & ~self.new_remote_dir.exists()
         self.remote_dir.move(self.new_remote_dir)
         assert ~self.remote_dir.exists() & self.new_remote_dir.exists()
@@ -409,7 +296,7 @@ class TestCase04RemoteFiles(unittest.TestCase):
         assert self.remote_file.exists() & self.new_remote_file.exists() \
             & (expected_string==self.remote_file.read()==self.new_remote_file.read())
         self.remote_dir.is_dir()
-        self.remote_dir.create_loc()
+        self.remote_dir.mkdir()
         self.remote_dir.copy(self.new_remote_dir)
         assert self.remote_dir.is_dir() & self.new_remote_dir.is_dir()
         self.new_remote_dir.delete()
@@ -429,17 +316,15 @@ class TestCase04RemoteFiles(unittest.TestCase):
     def test11_rotate(self):
         """Testing rotation functionality"""
         if not self.remote_file.exists():
-            self.remote_file.create()
-        rot_loc1: RemoteFile = remote_path_to_storage_loc(self._remote_path\
-            .joinpath('test.txt.old0'), self.ssh_interface, False)
-        rot_loc2: RemoteFile = remote_path_to_storage_loc(self._remote_path\
-            .joinpath('test.txt.old1'), self.ssh_interface, False)
+            self.remote_file.touch()
+        rot_loc1 = RemoteFile(self._remote_path.joinpath('test.txt.old0'), self.ssh_interface)
+        rot_loc2 = RemoteFile(self._remote_path.joinpath('test.txt.old1'), self.ssh_interface)
         assert self.remote_file.exists() & ~rot_loc1.exists() & ~rot_loc2.exists()
         self.remote_file.rotate()
-        self.remote_file.create()
+        self.remote_file.touch()
         assert self.remote_file.exists() & rot_loc1.exists() & ~rot_loc2.exists()
         self.remote_file.rotate()
-        self.remote_file.create()
+        self.remote_file.touch()
         assert self.remote_file.exists() & rot_loc1.exists() & rot_loc2.exists()
         self.remote_file.delete()
         rot_loc1.delete()
@@ -448,6 +333,28 @@ class TestCase04RemoteFiles(unittest.TestCase):
     def test12_get_archiveref(self):
         """Testing archive reference production"""
         assert self.local_file.absolute_path == self.local_file.get_archive_ref()
+
+    def test13_get_config(self):
+        """Testing config exporter"""
+        rot_loc1 = RemoteFile(self._remote_path.joinpath('test.txt.old0'), self.ssh_interface)
+        exported_dict = rot_loc1.to_dict()
+        expected_dict = {'path_ref': str(self._remote_path.joinpath('test.txt.old0')),
+            'ssh_inter': self.ssh_interface.export_config()}
+        assert exported_dict == expected_dict
+        assert RemoteFile(**exported_dict)
+
+    def test14_iter_location(self):
+        """Testing itering dir create and given"""
+        tmp_remote_loc = RemoteFile('/config/test_dir_recurse/yes', self.ssh_interface)
+        tmp_remote_loc.mkdir(True)
+        file_names = ['file1.txt', 'file2.txt', 'file3.txt', 'file4.txt', 'file5.txt']
+        pairs = {}
+        for file_name in file_names:
+            tmp_ref = tmp_remote_loc.join_loc(file_name)
+            tmp_ref.touch()
+            pairs[file_name] = tmp_ref
+        for tmp_reference in tmp_remote_loc.iter_location():
+            assert pairs.get(tmp_reference.name)==tmp_reference
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

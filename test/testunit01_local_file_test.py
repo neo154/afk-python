@@ -12,8 +12,6 @@ if str(_LIB_BASE) not in sys.path:
     sys.path.insert(1, str(_LIB_BASE))
 
 from observer.storage.models import LocalFile
-from observer.storage.models.storage_models import path_to_storage_location
-
 
 class TestCase01LocalFiles(unittest.TestCase):
     """Testing for LocalFile objects"""
@@ -22,13 +20,11 @@ class TestCase01LocalFiles(unittest.TestCase):
     def setUpClass(cls) -> None:
         """Setting up for class testing"""
         cls.local_file_path = _BASE_LOC.joinpath('test.txt')
-        cls.local_file: LocalFile = path_to_storage_location(cls.local_file_path, False)
-        cls.new_local_file: LocalFile = path_to_storage_location(_BASE_LOC.joinpath('diff.txt'),
-            False)
+        cls.local_file = LocalFile(cls.local_file_path)
+        cls.new_local_file = LocalFile(_BASE_LOC.joinpath('diff.txt'))
         cls.local_dir_path = _BASE_LOC.joinpath('test_dir')
-        cls.local_dir: LocalFile = path_to_storage_location(cls.local_dir_path, True)
-        cls.new_local_dir: LocalFile = path_to_storage_location(_BASE_LOC.joinpath('diff_dir'),
-            True)
+        cls.local_dir = LocalFile(cls.local_dir_path)
+        cls.new_local_dir = LocalFile(_BASE_LOC.joinpath('diff_dir'))
         return super().setUpClass()
 
     def test01_properties(self):
@@ -38,7 +34,7 @@ class TestCase01LocalFiles(unittest.TestCase):
         self.local_file.name = 'new_test.txt'
         assert self.local_file.name == 'new_test.txt'
         assert self.local_file.storage_type == 'local_filesystem'
-        assert self.local_file== path_to_storage_location(self.local_file_path, False)
+        assert self.local_file==LocalFile(self.local_file_path)
 
     def test02_exists(self):
         """Testing file system exists"""
@@ -76,7 +72,7 @@ class TestCase01LocalFiles(unittest.TestCase):
     def test05_create(self):
         """Testing file creation/touch"""
         assert not self.local_file.exists()
-        self.local_file.create()
+        self.local_file.touch()
         assert self.local_file.exists()
         assert self.local_file.is_file()
         assert not self.local_file.is_dir()
@@ -110,30 +106,29 @@ class TestCase01LocalFiles(unittest.TestCase):
 
     def test08_delete(self):
         """Testing delete functionality"""
-        self.local_file.create()
-        self.local_dir.create_loc()
+        self.local_file.touch()
+        self.local_dir.mkdir()
         assert self.local_file.is_file()
         assert self.local_dir.is_dir()
         self.local_file.delete()
         assert ~self.local_file.exists()
         self.local_dir.delete()
         assert ~self.local_dir.exists()
-        tmp_file: LocalFile = path_to_storage_location(self.local_dir_path.joinpath("extra.txt"),
-            False)
-        self.local_dir.create_loc()
-        tmp_file.create()
+        tmp_file = LocalFile(self.local_dir_path.joinpath("extra.txt"))
+        self.local_dir.mkdir()
+        tmp_file.touch()
         assert self.local_dir.is_dir() & tmp_file.exists()
         self.local_dir.delete()
         assert ~(self.local_dir.exists() | tmp_file.exists())
 
     def test09_move(self):
         """Testing move functionality"""
-        self.local_file.create()
+        self.local_file.touch()
         assert self.local_file.exists() & ~self.new_local_file.exists()
         self.local_file.move(self.new_local_file)
         assert ~self.local_file.exists() & self.new_local_file.exists()
         self.new_local_file.delete()
-        self.local_dir.create_loc()
+        self.local_dir.mkdir()
         assert self.local_dir.exists() & ~self.new_local_dir.exists()
         self.local_dir.move(self.new_local_dir)
         assert ~self.local_dir.exists() & self.new_local_dir.exists()
@@ -147,7 +142,7 @@ class TestCase01LocalFiles(unittest.TestCase):
         self.local_file.copy(self.new_local_file)
         assert self.local_file.exists() & self.new_local_file.exists() \
             & (expected_string==self.local_file.read()==self.new_local_file.read())
-        self.local_dir.create_loc()
+        self.local_dir.mkdir()
         self.local_dir.copy(self.new_local_dir)
         assert self.local_dir.is_dir() & self.new_local_dir.is_dir()
         self.new_local_dir.delete()
@@ -166,15 +161,15 @@ class TestCase01LocalFiles(unittest.TestCase):
 
     def test11_rotate(self):
         """Testing rotation functionality"""
-        self.local_file.create()
-        rot_loc1: LocalFile = path_to_storage_location(_BASE_LOC.joinpath('test.txt.old0'), False)
-        rot_loc2: LocalFile = path_to_storage_location(_BASE_LOC.joinpath('test.txt.old1'), False)
+        self.local_file.touch()
+        rot_loc1 = LocalFile(_BASE_LOC.joinpath('test.txt.old0'))
+        rot_loc2 = LocalFile(_BASE_LOC.joinpath('test.txt.old1'))
         assert self.local_file.exists() & ~rot_loc1.exists() & ~rot_loc2.exists()
         self.local_file.rotate()
-        self.local_file.create()
+        self.local_file.touch()
         assert self.local_file.exists() & rot_loc1.exists() & ~rot_loc2.exists()
         self.local_file.rotate()
-        self.local_file.create()
+        self.local_file.touch()
         assert self.local_file.exists() & rot_loc1.exists() & rot_loc2.exists()
         self.local_file.delete()
         rot_loc1.delete()
@@ -183,6 +178,15 @@ class TestCase01LocalFiles(unittest.TestCase):
     def test12_get_archiveref(self):
         """Testing archive reference production"""
         assert self.local_file.absolute_path == self.local_file.get_archive_ref()
+
+    def test13_get_dict_ref(self):
+        """Testing dictionary export of a local file object"""
+        local_ref = _BASE_LOC.joinpath('test.txt.old0')
+        rot_loc1 = LocalFile(_BASE_LOC.joinpath('test.txt.old0'))
+        expected_dict = {'path_ref': str(local_ref.absolute())}
+        assert expected_dict==rot_loc1.to_dict()
+        second_ref = LocalFile(**rot_loc1.to_dict())
+        assert second_ref == rot_loc1
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

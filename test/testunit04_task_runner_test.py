@@ -18,8 +18,8 @@ from time import sleep
 import pandas as pd
 
 from observer.storage import Storage
-from observer.storage.models.storage_models import path_to_storage_location
-from observer.task_runner import Runner, generate_task_instance
+from observer.storage.models.storage_models import LocalFile
+from observer.task_runner import Runner
 from observer.utils.parsers.observer_logs import analyze_logs, logs_2_df
 
 _BASE_LOC = Path(__file__).parent.parent
@@ -30,21 +30,27 @@ class Test04CaseTaskRunnerTesting(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         cls.testing_path = _BASE_LOC.joinpath("test/")
+        cls.log_path = cls.testing_path.joinpath('logs')
         cls.storage_config = {
             'base_loc': {
                 'config_type': 'local_filesystem',
                 'config': {
-                    'loc': cls.testing_path,
-                    'is_dir': True
+                    'path_ref': cls.testing_path
+                }
+            },
+            'log_loc': {
+                'config_type': 'local_filesystem',
+                'config': {
+                    'path_ref': cls.log_path
                 }
             }
         }
         cls.base_storage = Storage(cls.storage_config)
-        cls.log_path = cls.testing_path.joinpath('logs')
         cls.mutex_path: Path = cls.base_storage.mutex_loc.absolute_path
         if not cls.log_path.is_dir():
             cls.log_path.mkdir()
-        cls.test_runner = Runner(log_loc=cls.log_path)
+        # need to send log location as localfile instae dof path
+        cls.test_runner = Runner(storage=cls.base_storage)
         return super().setUpClass()
 
     @classmethod
@@ -66,11 +72,12 @@ class Test04CaseTaskRunnerTesting(unittest.TestCase):
 
     def test01_task_instance_generation(self) -> None:
         """Testing generation of task instances"""
-        assert generate_task_instance(TestingTask1(storage_config=self.storage_config)) is not None
+        assert self.test_runner.generate_task_instance(TestingTask1(
+            storage_config=self.storage_config)) is not None
 
     def test02_adding_single_task_instance(self) -> None:
         """Testing of adding single task instance to queue"""
-        assert self.test_runner.add_tasks(generate_task_instance(TestingTask1(
+        assert self.test_runner.add_tasks(self.test_runner.generate_task_instance(TestingTask1(
             storage_config=self.storage_config))) is None
 
     def test03_task_runner_start_service(self) -> None:
@@ -94,9 +101,9 @@ class Test04CaseTaskRunnerTesting(unittest.TestCase):
             self.test_runner.shutdown()
         sleep(5)
         self.test_runner.start()
-        self.test_runner.add_tasks(generate_task_instance(TestingTask1(sleep_timer=20,
-            storage_config=self.storage_config)))
-        sleep(10)
+        self.test_runner.add_tasks(self.test_runner.generate_task_instance(TestingTask1(
+            sleep_timer=20, storage_config=self.storage_config)))
+        sleep(5)
         tmp_task_l = self.test_runner.running_tasks
         assert tmp_task_l
         assert self.log_path.joinpath('testing_task_type1.log').exists()
@@ -107,20 +114,21 @@ class Test04CaseTaskRunnerTesting(unittest.TestCase):
         if not self.test_runner.is_running:
             self.test_runner.start()
         tasks_l = [
-            generate_task_instance(TestingTask3, storage_config=self.storage_config,
-                sleep_timer=10),
-            generate_task_instance(TestingTask4(self.storage_config, sleep_timer=3)),
-            generate_task_instance(TestingTask2(self.storage_config)),
-            generate_task_instance(TestingTask5(storage_config=self.storage_config,
-                throw_error=True))
+            self.test_runner.generate_task_instance(TestingTask3,
+                storage_config=self.storage_config, sleep_timer=10),
+            self.test_runner.generate_task_instance(TestingTask4(self.storage_config,
+                sleep_timer=3)),
+            self.test_runner.generate_task_instance(TestingTask2(self.storage_config)),
+            self.test_runner.generate_task_instance(TestingTask5(
+                storage_config=self.storage_config, throw_error=True))
         ]
         assert self.test_runner.add_tasks(tasks_l) is None
 
     def test07_adding_callable_instances(self) -> None:
         """Testing adding callables ask tasks, no checks but at least can run simple functions"""
-        tasks_l = [generate_task_instance(testing_type, task_type='test_callable_type',
-                task_name='test_callable_name1'),
-            generate_task_instance(testing_type, task_type='test_callable_type',
+        tasks_l = [self.test_runner.generate_task_instance(testing_type,
+                task_type='test_callable_type', task_name='test_callable_name1'),
+            self.test_runner.generate_task_instance(testing_type, task_type='test_callable_type',
                 task_name='test_callable_name2', sleep_timer=6)]
         assert self.test_runner.add_tasks(tasks_l) is None
         self.test_runner.start()
@@ -137,24 +145,25 @@ class Test04CaseTaskRunnerTesting(unittest.TestCase):
         sleep(10)
         self.test_runner.start()
         tasks_l = [
-            generate_task_instance(TestingTask1(sleep_timer=5,
+            self.test_runner.generate_task_instance(TestingTask1(sleep_timer=5,
                 storage_config=self.storage_config)),
-            generate_task_instance(TestingTask3, storage_config=self.storage_config,
-                sleep_timer=10),
-            generate_task_instance(TestingTask4(self.storage_config, sleep_timer=3)),
-            generate_task_instance(TestingTask2(self.storage_config)),
-            generate_task_instance(testing_type, task_type='test_callable_type',
+            self.test_runner.generate_task_instance(TestingTask3,
+                storage_config=self.storage_config, sleep_timer=10),
+            self.test_runner.generate_task_instance(TestingTask4(self.storage_config,
+                sleep_timer=3)),
+            self.test_runner.generate_task_instance(TestingTask2(self.storage_config)),
+            self.test_runner.generate_task_instance(testing_type, task_type='test_callable_type',
                 task_name='test_callable_name1'),
-            generate_task_instance(testing_type, task_type='test_callable_type',
+            self.test_runner.generate_task_instance(testing_type, task_type='test_callable_type',
                 task_name='test_callable_name2', sleep_timer=6),
-            generate_task_instance(TestingTask5(storage_config=self.storage_config,
-                throw_error=True))
+            self.test_runner.generate_task_instance(TestingTask5(
+                storage_config=self.storage_config, throw_error=True))
         ]
         self.test_runner.add_tasks(tasks_l)
-        self.test_runner.add_tasks(generate_task_instance(TestingTask1(sleep_timer=5,
-                storage_config=self.storage_config)))
+        self.test_runner.add_tasks(self.test_runner.generate_task_instance(TestingTask1(
+            sleep_timer=5, storage_config=self.storage_config)))
         sleep(30)
-        base_log_loc = path_to_storage_location(self.log_path, True)
+        base_log_loc = LocalFile(self.log_path)
         callable_logs = base_log_loc.join_loc('test_callable_type.log')
         assert callable_logs.exists()
         test_task_logs = base_log_loc.join_loc('testing_task_type1.log')
@@ -200,12 +209,12 @@ class Test04CaseTaskRunnerTesting(unittest.TestCase):
             self.test_runner.shutdown()
         self.test_runner.start()
         tasks_l = [
-            generate_task_instance(TestingTask5(storage_config=self.storage_config,
-                throw_error=True))
+            self.test_runner.generate_task_instance(TestingTask5(
+                storage_config=self.storage_config, throw_error=True))
         ]
         self.test_runner.add_tasks(tasks_l)
         sleep(10)
-        mutex_loc = self.base_storage.mutex_loc
+        mutex_loc: LocalFile = self.base_storage.mutex_loc
         assumed_left_over_mutex = mutex_loc.join_loc(
             f"testing_task_name5_{self.base_storage.report_date_str}.mutex")
         assert assumed_left_over_mutex.exists()
