@@ -2,8 +2,8 @@
 """task.py
 
 Author: neo154
-Version: 0.1.1
-Date Modified: 2023-04-28
+Version: 0.2.0
+Date Modified: 2023-11-15
 
 Module that describes a singular task that is to be, this is the basic structure singular tasks
 that will utilize things like storage modules and other basic utilities
@@ -11,12 +11,13 @@ that will utilize things like storage modules and other basic utilities
 
 import datetime
 import logging
-from logging.handlers import QueueHandler
 import sys
+from logging.handlers import QueueHandler
 from multiprocessing import Queue
-from typing import Union, Iterable, Mapping, Any, Dict
+from typing import Any, Iterable, Mapping, Union
 
 from observer.storage import Storage
+from observer.storage.storage_config import StorageConfig
 
 _defaultLogger = logging.getLogger(__name__)
 
@@ -34,13 +35,14 @@ class BaseTask():
     """Task structure and guts for any task that is given"""
 
     def __init__(self, task_type: str='generic_tasktype', task_name: str='generic_taskname',
-            has_mutex: bool=True, has_archive: bool=True, override: bool=False,
-            run_date: datetime.datetime=datetime.datetime.now(),
-            storage_config: Dict=None, logger: logging.Logger=_defaultLogger,
+            run_type: str='testing', has_mutex: bool=True, has_archive: bool=True,
+            override: bool=False, run_date: datetime.datetime=datetime.datetime.now(),
+            storage_config: StorageConfig=None, logger: logging.Logger=_defaultLogger,
             log_level: int=logging.INFO, interactive: bool=INTERACTIVE) -> None:
         """Initializer for all tasks, any logs that occur here will not be in log file for tasks"""
         self.__task_name = task_name.lower().replace(' ', '_')
         self.__task_type = task_type.lower().replace(' ', '_')
+        self.__run_type = run_type.lower().replace(' ', '_')
         self.__run_date = run_date
         self.__storage = Storage(storage_config)
         self.__task_run_check = False
@@ -70,6 +72,15 @@ class BaseTask():
         * REQUIRED TO BE WITHOUT SPACES AND WILL GET THROWN TO LOWERCASE
         """
         return self.__task_type
+
+    @property
+    def run_type(self) -> str:
+        """
+        Identifies the type of run, such as production, testing, dev, etc.
+
+        * REQUIRED TO BE WITHOUT SPACES AND WILL GET THROWN TO LOWERCASE
+        """
+        return self.__run_type
 
     @property
     def run_date(self) -> datetime.datetime:
@@ -162,7 +173,7 @@ class BaseTask():
             self.logger.info("MUTEX_FOUND")
             _exit_code(self.__interactive)
         self.__task_run_check = True
-        self.storage.mutex.create()
+        self.storage.mutex.touch()
         self.__mutex_queue.put((f"{self.task_name}-{self.__uuid}", self.__storage.mutex))
         self.logger.info("CONDITIONS_PASSED")
 

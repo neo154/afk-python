@@ -11,11 +11,10 @@ Includes capability to run a Task or a function, and setting up logging for Task
 """
 
 from logging import Logger
-from typing import Any, Callable, Iterable, Mapping
 from multiprocessing import Process, Queue
-from uuid import uuid4
 from socket import gethostname
-
+from typing import Any, Callable, Iterable, Mapping
+from uuid import uuid4
 
 from observer.task import BaseTask
 
@@ -25,8 +24,9 @@ class TaskProcess(Process):
     """Create and setup new task with necessary hooks, handlers, and logging"""
 
     def __init__(self, task: BaseTask=None, task_type: str='generic_tasktype',
-            task_name: str='generic_taskname', target: Callable[..., Any]=None,
-            args: Iterable[Any]=None, kwargs: Mapping[str, Any]=None) -> None:
+            task_name: str='generic_taskname', run_type: str='testing',
+            target: Callable[..., Any]=None, args: Iterable[Any]=None,
+            kwargs: Mapping[str, Any]=None) -> None:
         if task is None and target is None:
             raise RuntimeError("Cannot leave task and target empty, must have some callable")
         if task is not None and target is not None:
@@ -41,6 +41,7 @@ class TaskProcess(Process):
             target = task._prep_run
             task_type = task.task_type
             task_name = task.task_name
+            run_type = task.run_type
         else:
             self.task = None
             self.is_callable = True
@@ -51,9 +52,11 @@ class TaskProcess(Process):
         super().__init__(None, target, None, args, kwargs, daemon=False)
         self.__task_name = task_name.lower().replace(' ', '_')
         self.__task_type = task_type.lower().replace(' ', '_')
+        self.__run_type = run_type.lower().replace(' ', '_')
         self.logger = None
         self.mp_log_queue = None
         self.mutex_queue = None
+        self.storage = None
 
     @property
     def uuid(self) -> str:
@@ -79,6 +82,15 @@ class TaskProcess(Process):
         :returns: String identifying the type of the task
         """
         return self.__task_type
+
+    @property
+    def run_type(self) -> str:
+        """
+        Identifies the type of run, such as production, testing, dev, etc.
+
+        * REQUIRED TO BE WITHOUT SPACES AND WILL GET THROWN TO LOWERCASE
+        """
+        return self.__run_type
 
     def __require_logger(self) -> None:
         """
