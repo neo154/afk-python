@@ -1,17 +1,21 @@
 """paramiko_conn.py
 
 Author: neo154
-Version: 0.1.0
-Date Modified: 2022-12-19
+Version: 0.2.0
+Date Modified: 2023-11-15
 
 Module that is primarily intended to contain all ssh or paramiko actions
 that will be used in remote connections
 """
 
 from pathlib import Path
-from typing import Literal, Union
+from stat import S_ISDIR, S_ISREG
+from typing import List, Literal, Union
 
 import paramiko
+
+from observer.storage.utils import ValidPathArgs, confirm_path_arg
+
 
 class ParamikoSSHConfigException(Exception):
     """Exception class for SSH configuration errors for Observer SSH command line wrapper"""
@@ -20,18 +24,18 @@ class ParamikoSSHConfigException(Exception):
         self.message = f"Issue with '{config_item}', {message}"
         super().__init__(self.message)
 
-def _confirm_path(path: Union[Path, str]) -> Path:
-    """
-    Checks and makes sure that this is an instance of a path
+def normalize_pathlike(path_arg: Union[str, Path, None]) -> Path:
+    """Normalizing path argument"""
+    ret_value = path_arg
+    if path_arg is None:
+        ret_value = None
+    elif isinstance(path_arg, str):
+        ret_value = Path(path_arg)
+    elif not isinstance(path_arg, Path):
+        raise ValueError(f"Cannot transform or handle type provided for pathlike: {path_arg}")
+    return ret_value
 
-    :param path: Pathlike object that need to be forced to pathlike, in case os strings
-    :returns: Pathlike object either way
-    """
-    if not isinstance(path, Path):
-        return Path(path)
-    return path
-
-def _sftp_exists(sftp_con: paramiko.SFTPClient, path: Path) -> bool:
+def _sftp_exists(sftp_con: paramiko.SFTPClient, path: ValidPathArgs) -> bool:
     """
     Checks to see if file or dir exists
 
@@ -39,14 +43,13 @@ def _sftp_exists(sftp_con: paramiko.SFTPClient, path: Path) -> bool:
     :param path: Pathlike object to be checked for
     :returns: Boolean whether or not file/dir exists
     """
-    path = _confirm_path(path)
     try:
-        sftp_con.stat(str(path))
+        sftp_con.stat(str(confirm_path_arg(path)))
         return True
     except: # pylint: disable=bare-except
         return False
 
-def _sftp_is_file(sftp_con: paramiko.SFTPClient, path: Path) -> bool:
+def _sftp_is_file(sftp_con: paramiko.SFTPClient, path: ValidPathArgs) -> bool:
     """
     Checks if file exists on remote filesystem with existing connection
 
@@ -54,20 +57,12 @@ def _sftp_is_file(sftp_con: paramiko.SFTPClient, path: Path) -> bool:
     :param path: Pathlike object to be checked if it is a file
     :returns: Boolean whether or not file exists and is a file
     """
-    path = _confirm_path(path)
-    orig_dir = sftp_con.getcwd()
-    if not _sftp_is_dir(sftp_con, path.parent):
-        return False
-    if path.name in sftp_con.listdir(str(path.parent)):
-        try:
-            sftp_con.chdir(str(path))
-            ret_val = False
-        except: # pylint: disable=bare-except
-            ret_val = True
-        sftp_con.chdir(orig_dir)
-        return ret_val
+    path = confirm_path_arg(path)
+    if _sftp_exists(sftp_con, path):
+        return S_ISREG(sftp_con.stat(str(path)).st_mode)
+    return False
 
-def _sftp_is_dir(sftp_con: paramiko.SFTPClient, path: Path) -> bool:
+def _sftp_is_dir(sftp_con: paramiko.SFTPClient, path: ValidPathArgs) -> bool:
     """
     Checks if dir exists on remote filesystem with existing connection
 
@@ -75,17 +70,12 @@ def _sftp_is_dir(sftp_con: paramiko.SFTPClient, path: Path) -> bool:
     :param path: Pathlike object to be checked if it is a dir
     :returns: Boolean whether or not dir exists and is a dir
     """
-    path = _confirm_path(path)
-    orig_dir = sftp_con.getcwd()
-    try:
-        sftp_con.chdir(str(path))
-        ret_val = True
-    except: # pylint: disable=bare-except
-        ret_val = False
-    sftp_con.chdir(orig_dir)
-    return ret_val
+    path = confirm_path_arg(path)
+    if _sftp_exists(sftp_con, path):
+        return S_ISDIR(sftp_con.stat(str(path)).st_mode)
+    return False
 
-def _sftp_mkdir_p(sftp_con: paramiko.SFTPClient, path: Path) -> None:
+def _sftp_mkdir_p(sftp_con: paramiko.SFTPClient, path: ValidPathArgs) -> None:
     """
     Creates directory to create a directory
 
@@ -107,7 +97,7 @@ def _sftp_mkdir_p(sftp_con: paramiko.SFTPClient, path: Path) -> None:
                 "file")  # pylint: disable=raise-missing-from
     sftp_con.mkdir(str(path))
 
-def _recruse_del(sftp_con: paramiko.SFTPClient, path: Path) -> None:
+def _recruse_del(sftp_con: paramiko.SFTPClient, path: ValidPathArgs) -> None:
     """
     Deletes a file or sends another recursive instance to delete instances of files
 
@@ -115,7 +105,7 @@ def _recruse_del(sftp_con: paramiko.SFTPClient, path: Path) -> None:
     :param path: Pathlike object to create directory of files or file
     :returns: None
     """
-    path = _confirm_path(path)
+    path = confirm_path_arg(path)
     if _sftp_is_file(sftp_con, path):
         sftp_con.remove(str(path))
     elif _sftp_is_dir(sftp_con, path):
@@ -124,7 +114,8 @@ def _recruse_del(sftp_con: paramiko.SFTPClient, path: Path) -> None:
             _recruse_del(sftp_con, path.joinpath(dir_ref))
         sftp_con.rmdir(str(path))
 
-def _recurse_pull(sftp_con: paramiko.SFTPClient, source: Path, dest: Path) -> None:
+def _recurse_pull(sftp_con: paramiko.SFTPClient, source: ValidPathArgs,
+        dest: ValidPathArgs) -> None:
     """
     Recursively pulls files through SFTP connection
 
@@ -133,8 +124,8 @@ def _recurse_pull(sftp_con: paramiko.SFTPClient, source: Path, dest: Path) -> No
     :param dest: Pathlike object to create directory of files or file
     :returns: None
     """
-    source = _confirm_path(source)
-    dest = _confirm_path(dest)
+    source = confirm_path_arg(source)
+    dest = confirm_path_arg(dest)
     if _sftp_is_file(sftp_con, source):
         sftp_con.get(str(source), str(dest))
     elif _sftp_is_dir(sftp_con, source):
@@ -146,7 +137,8 @@ def _recurse_pull(sftp_con: paramiko.SFTPClient, source: Path, dest: Path) -> No
         for dir_ref in dir_refs:
             _recurse_pull(sftp_con, source.joinpath(dir_ref), dest.joinpath(dir_ref))
 
-def _recruse_push(sftp_con: paramiko.SFTPClient, source: Path, dest: Path) -> None:
+def _recurse_push(sftp_con: paramiko.SFTPClient, source: ValidPathArgs,
+        dest: ValidPathArgs) -> None:
     """
     Recursively pushes files through SFTP connection
 
@@ -155,22 +147,22 @@ def _recruse_push(sftp_con: paramiko.SFTPClient, source: Path, dest: Path) -> No
     :param dest: Pathlike object to create directory of files or file
     :returns: None
     """
-    source = _confirm_path(source)
-    dest = _confirm_path(dest)
+    source = confirm_path_arg(source)
+    dest = confirm_path_arg(dest)
     _sftp_mkdir_p(sftp_con, dest.parent)
     if source.is_file():
         sftp_con.put(str(source), str(dest))
     elif source.is_dir():
         sftp_con.mkdir(str(dest))
         for f_ref in source.iterdir():
-            _recruse_push(sftp_con, source.joinpath(f_ref.name), dest.joinpath(f_ref.name))
+            _recurse_push(sftp_con, source.joinpath(f_ref.name), dest.joinpath(f_ref.name))
 
 class ParamikoConn():
     """Paramiko configuration and object for interacting with files through paramiko SSH"""
 
-    def __init__(self, ssh_key: Path=None, host: str=None, userid: str=None,
+    def __init__(self, ssh_key: ValidPathArgs=None, host: str=None, userid: str=None,
             port: int=22) -> None:
-        self.ssh_key = ssh_key
+        self.ssh_key = normalize_pathlike(ssh_key)
         self.host = host
         self.userid = userid
         self.port = port
@@ -196,7 +188,7 @@ class ParamikoConn():
                 raise ParamikoSSHConfigException('config', 'Cannot contact the remote host')
 
     def __str__(self) -> str:
-        return f'{self.host}-{self.userid}-paramiko'
+        return f'{self.host}-{self.userid}'
 
     def __eq__(self, __o: object) -> bool:
         return str(self)==str(__o)
@@ -237,7 +229,7 @@ class ParamikoConn():
         return self.__ssh_key
 
     @ssh_key.setter
-    def ssh_key(self, new_key: Path) -> None:
+    def ssh_key(self, new_key: ValidPathArgs) -> None:
         """
         Setter for ssh key reference
 
@@ -318,76 +310,49 @@ class ParamikoConn():
             self.__ssh_config_checked = False
         return self.__ssh_config_checked
 
-    def norm(self, path: Path) -> Path:
+    def norm(self, path: ValidPathArgs) -> Path:
         """
         Normalizes path to full path on remote server
 
         :param path: Path of remote file or directory to be created as absolute ref
         :returns: Path object for file or directory
         """
-        path = _confirm_path(path)
+        path = confirm_path_arg(path)
         self.__check_config()
         with self.open_sftp_con() as sft_con:
             ret_val = sft_con.normalize(path)
         self.__base_client.close()
         return ret_val
 
-    def exists(self, path: Path) -> bool:
+    def exists(self, path: ValidPathArgs) -> bool:
         """
         Test to see if a file or directory exists
 
         :param path: Path or string of file to be checked for
         :returns: Boolean indicating whether file exists or not
         """
-        path = _confirm_path(path)
+        path = confirm_path_arg(path)
         self.__check_config()
-        with self.open_sftp_con() as sftp_con:
-            ret_val = _sftp_exists(sftp_con, path)
-        self.__base_client.close()
-        return ret_val
+        try:
+            self.stat(path)
+            return True
+        except FileNotFoundError:
+            return False
 
-    def is_file(self, path: Path) -> bool:
-        """
-        Test to see if a file or directory exists
-
-        :param path: Path or string of file to be checked for
-        :returns: Boolean indicating whether file exists or not
-        """
-        path = _confirm_path(path)
-        self.__check_config()
-        with self.open_sftp_con() as sftp_con:
-            ret_val = _sftp_is_file(sftp_con, path)
-        self.__base_client.close()
-        return ret_val
-
-    def is_dir(self, path: Path) -> bool:
-        """
-        Test to see if a file or directory exists
-
-        :param path: Path or string of file to be checked for
-        :returns: Boolean indicating whether file exists or not
-        """
-        path = _confirm_path(path)
-        self.__check_config()
-        with self.open_sftp_con() as sftp_con:
-            ret_val = _sftp_is_dir(sftp_con, path)
-        self.__base_client.close()
-        return ret_val
-
-    def touch(self, path: Path) -> None:
+    def touch(self, path: ValidPathArgs) -> None:
         """
         Creates file on remote system
 
         :param path: Pathlike object to create as file on remote filesystem
         :returns: None
         """
-        path = _confirm_path(path)
+        path = confirm_path_arg(path)
         self.__check_config()
         with self.open_sftp_con() as sftp_con:
             file_ref = sftp_con.file(str(path), 'w')
             file_ref.close()
 
-    def delete(self, path: Path, not_exist_ok: bool=False) -> None:
+    def delete(self, path: ValidPathArgs, not_exist_ok: bool=False) -> None:
         """
         Deletes file or dir on remote filesystem
 
@@ -395,7 +360,7 @@ class ParamikoConn():
         :param not_exist_ok: Boolean whether or not to accept file not existing
         :returns: None
         """
-        path = _confirm_path(path)
+        path = confirm_path_arg(path)
         with self.open_sftp_con() as sftp_con:
             if not _sftp_exists(sftp_con, path) and not_exist_ok:
                 sftp_con.close()
@@ -404,7 +369,7 @@ class ParamikoConn():
             _recruse_del(sftp_con, path)
         self.__base_client.close()
 
-    def pull_file(self, source_path: Path, dest_path: Path) -> None:
+    def pull_file(self, source_path: ValidPathArgs, dest_path: ValidPathArgs) -> None:
         """
         Pulls copy of file from remote host to local host
 
@@ -412,8 +377,8 @@ class ParamikoConn():
         :param dest_path: Pathlike object on local filesystem to pull
         :returns: None
         """
-        source = _confirm_path(source_path)
-        dest = _confirm_path(dest_path)
+        source = confirm_path_arg(source_path)
+        dest = confirm_path_arg(dest_path)
         with self.open_sftp_con() as sftp_con:
             if not _sftp_exists(sftp_con, source):
                 sftp_con.close()
@@ -422,7 +387,7 @@ class ParamikoConn():
             _recurse_pull(sftp_con, source, dest)
         self.__base_client.close()
 
-    def push_file(self, source_path: Path, dest_path: Path) -> None:
+    def push_file(self, source_path: ValidPathArgs, dest_path: ValidPathArgs) -> None:
         """
         Pushes copy of file from local host to remove host
 
@@ -430,15 +395,15 @@ class ParamikoConn():
         :param dest_path: Pathlike object on remote filesystem to pull
         :returns: None
         """
-        source = _confirm_path(source_path)
-        dest = _confirm_path(dest_path)
+        source = confirm_path_arg(source_path)
+        dest = confirm_path_arg(dest_path)
         if not source.exists():
             raise FileNotFoundError(f"Cannot locate remote file for download '{source}'")
         with self.open_sftp_con() as sftp_con:
-            _recruse_push(sftp_con, source, dest)
+            _recurse_push(sftp_con, source, dest)
         self.__base_client.close()
 
-    def move(self, source_path: Path, dest_path: Path) -> None:
+    def move(self, source_path: ValidPathArgs, dest_path: ValidPathArgs) -> None:
         """
         Moves file on remote server from one location to another
 
@@ -446,8 +411,8 @@ class ParamikoConn():
         :param dest_path: Pathlike object on remote filesystem to move to
         :returns: None
         """
-        source = _confirm_path(source_path)
-        dest = _confirm_path(dest_path)
+        source = confirm_path_arg(source_path)
+        dest = confirm_path_arg(dest_path)
         with self.open_sftp_con() as sftp_con:
             if not _sftp_exists(sftp_con, source):
                 sftp_con.close()
@@ -456,7 +421,7 @@ class ParamikoConn():
             sftp_con.rename(str(source), str(dest))
         self.__base_client.close()
 
-    def copy(self, source_path: Path, dest_path: Path) -> None:
+    def copy(self, source_path: ValidPathArgs, dest_path: ValidPathArgs) -> None:
         """
         Copies from one loc to another on morete server
 
@@ -464,8 +429,8 @@ class ParamikoConn():
         :param dest_path: Pathlike object on remote filesystem to copy to
         :returns: None
         """
-        source = _confirm_path(source_path)
-        dest = _confirm_path(dest_path)
+        source = confirm_path_arg(source_path)
+        dest = confirm_path_arg(dest_path)
         with self.open_sftp_con() as sftp_con:
             if not _sftp_exists(sftp_con, source):
                 sftp_con.close()
@@ -476,36 +441,41 @@ class ParamikoConn():
                 sftp_con.putfo(fl=orig_file, remotepath=str(dest), confirm=True)
         self.__base_client.close()
 
-    def create_loc(self, path: Path) -> None:
+    def mkdir(self, path: ValidPathArgs, parents: bool=False) -> None:
         """
         Creates a new location in the form of a remote directory
 
         :param path: Pathlike object to create, intended for directory creation
         :returns: None
         """
-        path = _confirm_path(path)
+        path = confirm_path_arg(path)
         with self.open_sftp_con() as sftp_con:
-            for parent in reversed(path.parents):
-                try:
-                    sftp_con.chdir(str(parent))
-                except: # pylint: disable=bare-except
-                    sftp_con.mkdir(str(parent))
-                try:
-                    sftp_con.chdir(str(parent))
-                except: # pylint: disable=bare-except
-                    raise Exception(f"Not able to go to directory '{parent}' may exist already "\
-                        "as file") # pylint: disable=raise-missing-from
-            sftp_con.mkdir(str(path))
+            try:
+                sftp_con.stat(str(path.parent))
+                sftp_con.mkdir(str(path))
+            except FileNotFoundError:
+                if parents:
+                    for parent in reversed(path.parents):
+                        try:
+                            sftp_con.chdir(str(parent))
+                        except: # pylint: disable=bare-except
+                            sftp_con.mkdir(str(parent))
+                        try:
+                            sftp_con.chdir(str(parent))
+                        except: # pylint: disable=bare-except
+                            raise RuntimeError(f"Not able to go to directory '{parent}' may"\
+                                " exist already as file") # pylint: disable=raise-missing-from
+                    sftp_con.mkdir(str(path))
         self.__base_client.close()
 
-    def read(self, path: Path) -> str:
+    def read(self, path: ValidPathArgs) -> str:
         """
         Reads file and returns string from the file
 
         :param path: Pathlike object to read from remote system
         :returns: String containers from file
         """
-        path = _confirm_path(path)
+        path = confirm_path_arg(path)
         with self.open_sftp_con() as sftp_con:
             if not _sftp_exists(sftp_con, path):
                 sftp_con.close()
@@ -516,7 +486,8 @@ class ParamikoConn():
         self.__base_client.close()
         return ret_contents
 
-    def open(self, path: Path, mode: Literal['r', 'rb', 'w', 'wb', 'a']) -> paramiko.SFTPFile:
+    def open(self, path: ValidPathArgs,
+            mode: Literal['r', 'rb', 'w', 'wb', 'a']) -> paramiko.SFTPFile:
         """
         Opens file and returns IO buffer for text, it is recommended to pull this to a local
         file and then open it, even as a temporary file.
@@ -524,10 +495,32 @@ class ParamikoConn():
         *WARNING*: THIS DOES NOT CLOSE THE SFTP INSTANCE, USE close_sftp TO END SSH SESSION
         """
         __writing = mode in ['w', 'wb', 'a']
-        path = _confirm_path(path)
+        path = confirm_path_arg(path)
         with self.open_sftp_con() as sftp_con:
             if not __writing and not _sftp_exists(sftp_con, path):
                 sftp_con.close()
                 self.__base_client.close()
                 raise FileNotFoundError(f"Cannot file for reading '{path}'")
             return sftp_con.open(str(path), mode)
+
+    def getcwd(self) -> str:
+        """Gets default current working directory of host on remote server"""
+        with self.open_sftp_con() as sftp_con:
+            return sftp_con.getcwd()
+
+    def stat(self, path_ref: ValidPathArgs) -> paramiko.SFTPAttributes:
+        """Gets stats of a given file"""
+        path_ref = confirm_path_arg(path_ref)
+        with self.open_sftp_con() as sftp_con:
+            return sftp_con.stat(str(path_ref))
+
+    def iterdir(self, path_ref: ValidPathArgs) -> List[str]:
+        """Iterates over a directory"""
+        path_ref = str(confirm_path_arg(path_ref))
+        with self.open_sftp_con() as sftp_con:
+            return sftp_con.listdir(path_ref)
+
+    def export_config(self) -> dict:
+        """Exports the ssh config to dictionary for usage"""
+        return {'ssh_key': str(self.ssh_key), 'host': self.host, 'userid': self.userid ,
+            'port': self.port}

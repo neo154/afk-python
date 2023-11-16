@@ -74,7 +74,7 @@ class DockerImage():
             self.stop()
         except: # pylint: disable=bare-except
             print('already stopped')
-        self.test_container.remove()
+        self.test_container.remove(v=True)
         self.test_container = None
         if not self.image_already_exists:
             self.client_images.remove(self.tmp_image.id)

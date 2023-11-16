@@ -2,42 +2,30 @@
 """storage_models.py
 
 Author: neo154
-Version: 0.1.0
-Date Modified: 2022-12-19
+Version: 0.2.0
+Date Modified: 2023-11-15
 
 Module that acts as a dummy for the variables and objects that are created
 and required for observer storage
 """
 
 from pathlib import Path
-from typing import List, Literal, TypeVar, Union
+from typing import Dict, List, Literal, Union
 
 from observer.storage.models.local_filesystem import LocalFile
 from observer.storage.models.remote_filesystem import RemoteFile
-from observer.storage.models.ssh.ssh_conn import SSHBaseConn
-from observer.storage.models.storage_model_configs import LocalFSConfig, RemoteFSConfig
+from observer.storage.models.ssh.paramiko_conn import ParamikoConn
+from observer.storage.models.storage_location import StorageLocation
 
-try:
-    from observer.storage.models.ssh.paramiko_conn import ParamikoConn
-    _PARAMIKO=True
-    SSHInterface = TypeVar('SSHInterface', SSHBaseConn, ParamikoConn)
-except ImportError:
-    SSHInterface = SSHBaseConn
-    _PARAMIKO=False
-
-StorageLocation = TypeVar('StorageLocation', LocalFile, RemoteFile)
-
-_SSHTyping = Union[SSHInterface, List[SSHInterface]]
 
 class StorageItem(dict):
     """Quick dictionary to describe any storage item"""
 
-    def __init__(self, config_type: Literal['local_filesystem', 'remote_filesystem'], config: dict,
-            is_dir: bool=None) -> None:
+    def __init__(self, config_type: Literal['local_filesystem', 'remote_filesystem'],
+            config: dict) -> None:
         super().__init__()
         self['config_type'] = config_type
         self['config'] = config
-        self['is_dir'] = is_dir
 
     def resolve_location(self) -> StorageLocation:
         """
@@ -46,9 +34,9 @@ class StorageItem(dict):
         :returns: StorageLocation for the config
         """
         if self['config_type'] == 'local_filesystem':
-            return LocalFile(local_obj=self['config'], is_dir=self['is_dir'])
+            return LocalFile(**self['config'])
         if self['config_type'] == 'remote_filesystem':
-            return RemoteFile(remote_obj=self['config'], is_dir=self['is_dir'])
+            return RemoteFile(**self['config'])
         return StorageLocation
 
 def generate_storage_location(config_item: dict) -> StorageLocation:
@@ -60,7 +48,7 @@ def generate_storage_location(config_item: dict) -> StorageLocation:
     """
     return StorageItem(**config_item).resolve_location()
 
-def path_to_storage_location(path_ref: Path, is_dir: bool=None) -> StorageLocation:
+def path_to_storage_location(path_ref: Path) -> StorageLocation:
     """
     Generates a storage location reference from a path
 
@@ -69,58 +57,91 @@ def path_to_storage_location(path_ref: Path, is_dir: bool=None) -> StorageLocati
     :returns: StorageLocation, specifically LocalFile object
     """
     return generate_storage_location({'config_type': 'local_filesystem',
-        'config': LocalFSConfig(path_ref, is_dir), 'is_dir': is_dir})
+        'config': {'path_ref': path_ref}})
 
 def generate_ssh_interface(ssh_key: Path=None, host: str=None, userid: str=None,
-        ssh_bin: Path=None, port: int=22, scp_bin: Path=None,
-        rsync_bin: Path=None, remote_rsync_bin: Path=None) -> SSHInterface:
+        port: int=22) -> ParamikoConn:
     """
     Generates SSH interface for Storage location
+
+    :param ssh_key: Path of SSH Key that will be used for remote storage from other devices
+    :param host: String of host ID/IP of remote device
+    :param userid: String of username to login for ssh connections
+    :param port: Integer of the port for the SSH interface
+    :returns: ParamikoConnection to host
     """
     if not ssh_key.exists():
         raise FileNotFoundError(f"Cannot locate keyfile {ssh_key}")
-    if _PARAMIKO:
-        return ParamikoConn(ssh_key, host, userid, port)
-    return SSHBaseConn(ssh_key, host, userid, ssh_bin, port, scp_bin, rsync_bin,
-        remote_rsync_bin)
+    return ParamikoConn(ssh_key, host, userid, port)
 
-def remote_path_to_storage_loc(path_ref: Path, ssh_interface: Union[SSHInterface, dict],
-        is_dir: bool=False) -> StorageLocation:
+def remote_path_to_storage_loc(path_ref: Path,
+        ssh_interface: Union[ParamikoConn, dict]) -> StorageLocation:
     """
     Generates a storage location from path and other local variables
+
+    :param path_ref: Path of storage location for remote device
+    :param ssh_interface: Interface connection or dictionary entry
+    :returns: StorageLocation object
     """
     return generate_storage_location({'config_type': 'remote_filesystem',
-        'config': RemoteFSConfig(path_ref, ssh_interface, is_dir)})
+        'config': {'path_ref': path_ref, 'ssh_config': ssh_interface}})
+
+class SSHInterfaceError(Exception):
+    """Raised if there is an issue with SSHInterfaceCollection"""
+
+    def __init__(self, *args: object) -> None:
+        super().__init__(*args)
 
 class SSHInterfaceCollection():
     """SSH Interface collection for Storage to simplify the management of them"""
 
-    def __init__(self, interfaces: Union[SSHInterface, List[SSHInterface]]=None) -> None:
-        if interfaces is None:
-            interfaces = []
-        elif isinstance(SSHInterface, interfaces):
-            interfaces = [interfaces]
-        self.__interfaces = interfaces
+    def __init__(self,
+            interfaces: Union[Dict, List[Dict], ParamikoConn, List[ParamikoConn]]=None) -> None:
+        self.__interfaces: List[ParamikoConn] = []
+        if interfaces is not None and len(interfaces)>0:
+            self.add(interfaces)
 
     def empty(self) -> bool:
-        """Returns whether or not this interface collection is length"""
+        """
+        Returns whether or not this interface collection is length
+
+        :returns: Boolean of whether Collection is empty or not
+        """
         return len(self.__interfaces) == 0
 
-    def get_interface(self, int_id: str) -> SSHInterface:
-        """Gets SSH interface"""
+    def get_interface(self, int_id: str) -> ParamikoConn:
+        """
+        Gets SSH interface for a given ID
+
+        :param int_id: String identifying the host and exact connection configuration
+        :returns: ParamikoConnection to remote device
+        """
         for interface in self.__interfaces:
             if str(interface)==int_id:
                 return interface
-        raise Exception(f"Interface with ID '{int_id}' not found")
+        raise SSHInterfaceError(f"Interface with ID '{int_id}' not found")
 
     def get_ids(self) -> List[str]:
-        """Gets list of interface ids"""
+        """
+        Gets list of interface ids for all remote interfaces
+
+        :returns: List strings for interface identifiers
+        """
         return [ str(interface) for interface in self.__interfaces ]
 
-    def add(self, new_interfaces: _SSHTyping) -> None:
-        """Addes interfaces to list of interfaces"""
+    def add(self,
+            new_interfaces: Union[Dict, List[Dict], ParamikoConn, List[ParamikoConn]]) -> None:
+        """
+        Adds a single interface fo a list of given infervaces via the interfaces themselves or
+        their configurations in dictionary form
+
+        :param new_interfaces: Single or List of interface objects or configuration to add
+        :returns: None
+        """
         if not isinstance(new_interfaces, list):
             new_interfaces = [new_interfaces]
+        if not isinstance(new_interfaces[0], ParamikoConn):
+            new_interfaces = [ ParamikoConn(**interface) for interface in new_interfaces ]
         current_interfaces = self.get_ids()
         for new_interface in new_interfaces:
             if not new_interface in current_interfaces:
@@ -128,7 +149,12 @@ class SSHInterfaceCollection():
                 self.__interfaces.append(new_interface)
 
     def remove(self, ids: Union[str, List[str]]) -> None:
-        """Removes interfaces from a list of ids"""
+        """
+        Removes interfaces from an id or list of ids
+
+        :param ids: String or list of strings identifying interfaces for removal from collection
+        :returns: None
+        """
         if isinstance(ids, str):
             ids = [ids]
         ids = list(set(ids))
@@ -137,4 +163,12 @@ class SSHInterfaceCollection():
                 ids.remove(str(intstance))
                 self.__interfaces.remove(intstance)
         if len(ids) > 0:
-            raise Exception(f"Can't find ids: {','.join(ids)}")
+            raise SSHInterfaceError(f"Can't find ids: {','.join(ids)}")
+
+    def export_interfaces(self) -> List[Dict]:
+        """
+        Exports interface entries that can be re_processed
+
+        :returns: List of dictionary entires for SSH interface configurations
+        """
+        return [interface.export_config() for interface in self.__interfaces]

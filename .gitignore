@@ -132,6 +132,7 @@ dmypy.json
 tmp/
 archive/
 data/
+logs/
 *.tar.bz2
 *.tar.gz
 *.csv
@@ -139,3 +140,4 @@ data/
 *.log
 test.py
 .vscode
+scratch.py

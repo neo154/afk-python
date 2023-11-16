@@ -2,71 +2,56 @@
 """task_runner.py
 
 Author: neo154
-Version: 0.1.0
-Date Modified: 2023-04-28
+Version: 0.2.0
+Date Modified: 2023-11-15
 
 Module for BaseRunner that is responsible for taking a collection of Jobs, Tasks, and functions
 to be run, and converts them all to tasks. Then takes the tasks nad sets them all up with their
 appropriate logging where applicable and runs them, evaluating the ending of the tasks as well.
 """
 
+import atexit
 import logging
 from logging.handlers import QueueHandler, QueueListener
 from multiprocessing import Queue
-from pathlib import Path
 from queue import Empty
 from socket import gethostname
 from threading import Thread
 from time import sleep
-from typing import (Callable, Dict, List,
-                    Union, Type, Tuple)
+from typing import Callable, Dict, List, Tuple, Type, Union
 from uuid import uuid4
 
-from observer.task_process import TaskProcess
-from observer.logging_helpers import get_local_log_file, get_log_location
-from observer.storage.models.local_filesystem import LocalFile, LocalFSConfig
+from observer.logging_helpers import get_local_log_file
+from observer.storage import Storage
 from observer.storage.models import StorageLocation
 from observer.task import BaseTask
+from observer.task_process import TaskProcess
 
 HOSTNAME=gethostname()
 
-_LogLocType = Union[LocalFile, LocalFSConfig, Path]
 _TaskLikeType = Union[BaseTask, Callable]
 _TaskLikeInstanceType = Tuple[_TaskLikeType, str, str, Tuple, Dict]
 _RunningTaskProcess = Dict[str, TaskProcess]
 
-def generate_task_instance(task_like: _TaskLikeType, *args, task_type: str=None,
-        task_name: str=None, **kwargs) -> _TaskLikeInstanceType:
-    """
-    Generator for task like instance that is ready to be added to a task runner
-
-    :param task_like: Callable, BaseTask class, or BaseTask instance that will be run
-    :param *args: Arguments that are to be consumed by TaskLike
-    :param task_type: String name of the type of task being run, used for Callables
-    :param task_name: String name of the task being run, used for Callables
-    :param **kwargs: Key-value pairs of consumable arguments for TaskLike
-    :returns: Tuple of task and all required parameters to be run
-    """
-    if isinstance(task_like, BaseTask):
-        return (task_like, task_like.task_type, task_like.task_name, args, kwargs)
-    elif isinstance(task_like, type) and issubclass(task_like, BaseTask):
-        task_like = task_like(*args, **kwargs)
-        return (task_like, task_like.task_type, task_like.task_name, (), {})
-    if task_type is None or task_name is None:
-        raise ValueError("For non-basetask callables, requires a task_type and task_name argument")
-    return (task_like, task_type, task_name, args, kwargs)
 
 class Runner():
     """
     Base Runner object for scheduling immediate tasks using tasks or callable function
     """
 
-    def __init__(self, max_instances: int=-1, level: int=logging.INFO, log_loc: _LogLocType=None,
-            host_id: str=HOSTNAME) -> None:
+    def __init__(self, storage: Storage=None, max_instances: int=-1, level: int=logging.INFO,
+            log_loc: StorageLocation=None, host_id: str=HOSTNAME, auto_start: bool=True,
+            runner_type: str='prod') -> None:
         # Setup basic logging and self references, and some type hints
+        if storage is None:
+            storage = Storage()
+        self.__storage = storage
         self.__runner_logger = logging.getLogger('admin')
+        self.backup_runner_logger = logging.getLogger('admin2')
         self.default_level = level
-        self.__default_log_loc = get_log_location(log_loc)
+        if log_loc is None:
+            log_loc = self.__storage.log_loc
+        self.__default_log_loc = log_loc
         self.__log_queue_refs = {}
         self.__ready_tasklike_queue: "Queue[_TaskLikeInstanceType]" = Queue(-1)
         self.__task_mutex_queue: "Queue[Tuple[str, StorageLocation]]" = Queue(-1)
@@ -74,17 +59,20 @@ class Runner():
         self.__current_runnings: _RunningTaskProcess = {}
         self.__max_instances = max_instances
         self.formatter = logging.Formatter(
-            "%(asctime)s %(host_id)s %(task_type)s %(task_name)s %(uuid)s '%(pathname)s' "
-                + "LINENO:%(lineno)d %(levelname)s: %(message)s", "%Y-%m-%d %H:%M:%S"
+            "%(asctime)s %(host_id)s %(run_type)s %(task_type)s %(task_name)s %(uuid)s "
+                + "'%(pathname)s' LINENO:%(lineno)d %(levelname)s: %(message)s",
+                    "%Y-%m-%d %H:%M:%S"
         )
         self.host_id = host_id
-        # Generating own logger
-        self.__set_logger_references()
         # Final setup and then start servers
         self.__is_running = False
         self._task_run_thread = None
         self._task_eval_thread = None
-        self.start()
+        self.__run_type = runner_type
+        self.__logger = None
+        if auto_start:
+            self.start()
+        atexit.register(self.shutdown)
 
     @property
     def max_proc_count(self) -> int:
@@ -107,9 +95,41 @@ class Runner():
         return self.__is_running
 
     @property
+    def storage(self) -> Storage:
+        """Storage reference for the task runner that is active"""
+        return self.__storage
+
+    @property
     def logger(self) -> logging.Logger:
         """Gets logger reference"""
         return self.__logger
+
+    def generate_task_instance(self, task_like: _TaskLikeType, task_type: str=None,
+            task_name: str=None, run_type: str=None, **kwargs) -> _TaskLikeInstanceType:
+        """
+        Generator for task like instance that is ready to be added to a task runner
+
+        :param task_like: Callable, BaseTask class, or BaseTask instance that will be run
+        :param *args: Arguments that are to be consumed by TaskLike
+        :param task_type: String name of the type of task being run, used for Callables
+        :param task_name: String name of the task being run, used for Callables
+        :param **kwargs: Key-value pairs of consumable arguments for TaskLike
+        :returns: Tuple of task and all required parameters to be run
+        """
+        if run_type is None:
+            run_type = self.__run_type
+        is_base_inst = isinstance(task_like, BaseTask)
+        is_base_subclass = isinstance(task_like, type) and issubclass(task_like, BaseTask)
+        if is_base_inst:
+            return (task_like, task_like.task_type, task_like.task_name, run_type, kwargs)
+        if is_base_subclass:
+            if 'storage_config' not in kwargs or kwargs['storage_config'] is None:
+                kwargs['storage_config'] = self.storage.to_dict()
+            task_like = task_like(**kwargs)
+            return (task_like, task_like.task_type, task_like.task_name, run_type, {})
+        if task_type is None or task_name is None:
+            raise ValueError("For non-basetask callers, requires a task_type and task_name args")
+        return (task_like, task_type, task_name, run_type, kwargs)
 
     def __set_logger_references(self) -> None:
         """Sets logger objects to ready"""
@@ -123,9 +143,9 @@ class Runner():
             'uuid': uuid4(),
             'task_type': 'admin',
             'task_name': 'task_runner',
-            'host_id': self.host_id
+            'host_id': self.host_id,
+            'run_type': self.__run_type
         })
-
 
     def __check_mutex_queue(self) -> None:
         """Processes mutex queue for all current entries"""
@@ -144,6 +164,8 @@ class Runner():
                 break
             except Empty:
                 return
+            except OSError:
+                return
             except Exception as exc:
                 raise exc
 
@@ -151,7 +173,7 @@ class Runner():
         """Checker for whether or not mp_handler exists in set"""
         return task_type in self.__log_queue_refs
 
-    def generate_queue_listener_refs(self, task_type: str, log_loc: _LogLocType=None,
+    def generate_queue_listener_refs(self, task_type: str, log_loc: StorageLocation=None,
             sub_handlers: Union[List[Type[logging.Handler]], Type[logging.Handler]]=None) -> None:
         """
         Generates new listener and adds it to handler to collections for tracking and cleaning or
@@ -188,7 +210,8 @@ class Runner():
         return self.__log_queue_refs[task_type]['queue']
 
     def generate_new_logger(self, name: str, task_uuid: str, task_type: str,
-            task_name:str, handler: logging.Handler=None) -> logging.LoggerAdapter:
+            task_name:str, run_type:str,
+            handler: logging.Handler=None) -> logging.LoggerAdapter:
         """
         Generates new logger for tasks logging
 
@@ -213,7 +236,8 @@ class Runner():
             'uuid': task_uuid,
             'task_type': task_type,
             'task_name': task_name,
-            'host_id': self.host_id
+            'host_id': self.host_id,
+            'run_type': run_type
         })
         ret_adapter.setLevel(self.default_level)
         return ret_adapter
@@ -248,10 +272,10 @@ class Runner():
                 task_like = task_ref[0]
                 if isinstance(task_like, BaseTask):
                     new_task = TaskProcess(task=task_like, task_type=task_ref[1],
-                        task_name=task_ref[2], args=task_ref[3], kwargs=task_ref[4])
+                        task_name=task_ref[2], run_type=task_ref[3], kwargs=task_ref[4])
                 else:
                     new_task = TaskProcess(task_type=task_ref[1], task_name=task_ref[2],
-                        target=task_like, args=task_ref[3], kwargs=task_ref[4])
+                        run_type=task_ref[3], target=task_like, kwargs=task_ref[4])
                 # Check for log listener, if not generate it
                 if not self.__check_for_log_listener(new_task.task_type):
                     self.generate_queue_listener_refs(new_task.task_type)
@@ -260,7 +284,7 @@ class Runner():
                 queue_ref = self.get_queue_ref(task_type=new_task.task_type)
                 tmp_logger = self.generate_new_logger(
                     name=tmp_name, task_uuid=new_task.uuid, task_type=new_task.task_type,
-                    task_name=new_task.task_name
+                    task_name=new_task.task_name, run_type=new_task.run_type
                 )
                 new_task.set_local_data(new_logger=tmp_logger, level=self.default_level,
                     log_queue=queue_ref, mutex_queue=self.__task_mutex_queue)
@@ -275,7 +299,7 @@ class Runner():
                 self.logger.error("Unexpected broken file or pipe reference: %s", tmp_err)
                 break
             except Empty:
-                sleep(5) # Don't stop if queue is empty, just sleep a little while and try again
+                sleep(1) # Don't stop if queue is empty, just sleep a little while and try again
             except Exception as exc:
                 raise exc
         self.logger.info("Stopping task service")
@@ -318,7 +342,7 @@ class Runner():
             elif len(self.__current_runnings) == 0 and not self.__is_running:
                 break
             else:
-                sleep(10)
+                sleep(1)
 
     def start(self) -> None:
         """
@@ -327,6 +351,7 @@ class Runner():
         :returns: None
         """
         if not self.__is_running:
+            self.__set_logger_references()
             self.logger.info("START_JOB")
             self.logger.info("CONDITIONS_PASSED")
             self.__is_running = True
@@ -362,4 +387,3 @@ class Runner():
             if self.__logger.hasHandlers():
                 self.__runner_logger.handlers.clear()
             self.__log_queue_refs = {}
-            self.__set_logger_references()

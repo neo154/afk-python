@@ -2,7 +2,7 @@
 """storage.py
 
 Author: neo154
-Version: 0.1.0
+Version: 0.2.0
 Date Modified: 2023-04-29
 
 
@@ -14,15 +14,16 @@ import tarfile
 from logging import Logger
 from os import chdir
 from pathlib import Path
-from typing import List, Union
+from typing import Dict, List, Union
 
-from observer.storage.models import (LocalFile, LocalFSConfig,
-                                     SSHInterfaceCollection, StorageLocation,
+from observer.observer_logging import generate_logger
+from observer.storage.models import (LocalFile, SSHInterfaceCollection,
+                                     StorageLocation,
                                      generate_storage_location)
 from observer.storage.storage_config import StorageConfig
-from observer.observer_logging import generate_logger
 
 _DEFAULT_LOGGER = generate_logger(__name__)
+
 
 def _check_storage_arg(arg: Union[dict, StorageLocation]) -> StorageLocation:
     """
@@ -35,13 +36,21 @@ def _check_storage_arg(arg: Union[dict, StorageLocation]) -> StorageLocation:
         arg = generate_storage_location(arg)
     return arg
 
+def _export_entry(entry: StorageLocation) -> Dict:
+    """
+    Exports storage location entry for storage
+
+    :param entry: Storage Location to be exported do a dictionary entry
+    :returns: Dictionary of StorageLocation that can be processed for Storage configs
+    """
+    return {'config_type': entry.storage_type, 'config': entry.to_dict()}
+
 class Storage():
     """Storage class that identifies and handles abstracted storage tasks"""
 
     def __init__(self, storage_config: Union[dict, StorageConfig]=None,
             report_date: datetime.datetime=datetime.datetime.now(),
             date_postfix_fmt: str="%Y_%m_%d", job_desc: str="generic",
-            ssh_interfaces: SSHInterfaceCollection=SSHInterfaceCollection(),
             logger: Logger=_DEFAULT_LOGGER) -> None:
         self.date_postfix_fmt = date_postfix_fmt
         self.report_date_str = report_date
@@ -50,10 +59,7 @@ class Storage():
             storage_config = {
                 'base_loc': {
                     'config_type': 'local_filesystem',
-                    'config': {
-                        'loc': Path.cwd(),
-                        'is_dir': True
-                    }
+                    'config': { 'path_ref': Path.cwd() }
                 }
             }
         if not isinstance(storage_config, StorageConfig):
@@ -65,13 +71,14 @@ class Storage():
         self.report_loc = storage_config['report_loc']
         self.tmp_loc = storage_config['tmp_loc']
         self.__mutex_loc = storage_config['mutex_loc']
+        self.__log_loc = storage_config['log_loc']
         self.__archive_file = None
         self.archive_loc = storage_config['archive_loc']
         self.__archive_file = self.gen_archivefile_ref(f'{job_desc}.tar.bz2')
         self.__archive_files = storage_config['archive_files']
         self.__required_files = storage_config['required_files']
         self.__halt_files = storage_config['halt_files']
-        self.__ssh_interfaces = ssh_interfaces
+        self.__ssh_interfaces = SSHInterfaceCollection(storage_config['ssh_interfaces'])
 
     @property
     def logger(self) -> Logger:
@@ -144,6 +151,11 @@ class Storage():
         self.__base_loc = tmp_ref
 
     @property
+    def log_loc(self) -> StorageLocation:
+        """Location object for log storage"""
+        return self.__log_loc
+
+    @property
     def data_loc(self) -> StorageLocation:
         """Property declaration and getter for data loc"""
         return self.__data_loc
@@ -159,7 +171,7 @@ class Storage():
         """
         tmp_ref = _check_storage_arg(new_loc)
         self.logger.info("Setting data loc to: %s", tmp_ref)
-        self.__data_loc = tmp_ref.join_loc(f'data_{self.report_date_str}', as_dir=True)
+        self.__data_loc = tmp_ref.join_loc(f'data_{self.report_date_str}')
 
     @property
     def tmp_loc(self) -> StorageLocation:
@@ -194,7 +206,7 @@ class Storage():
         """
         tmp_ref =  _check_storage_arg(new_loc)
         self.logger.info("Setting report loc to: %s", tmp_ref)
-        self.__report_loc = tmp_ref.join_loc(f'report_{self.report_date_str}',as_dir=True)
+        self.__report_loc = tmp_ref.join_loc(f'report_{self.report_date_str}')
 
     @property
     def archive_loc(self) -> StorageLocation:
@@ -212,7 +224,7 @@ class Storage():
         """
         tmp_ref = _check_storage_arg(new_loc)
         self.logger.info("Setting archive loc to: %s", tmp_ref)
-        self._archive_loc =tmp_ref.join_loc(f'archive_{self.report_date_str}',as_dir=True)
+        self._archive_loc =tmp_ref.join_loc(f'archive_{self.report_date_str}')
         if self.__archive_file is not None:
             self.archive_file = self.__get_stem_prefix(self.archive_file)
 
@@ -473,7 +485,7 @@ class Storage():
         if not tmp_dir.exists():
             tmp_dir.mkdir(exist_ok=True)
         tmp_archive_file = tmp_dir.joinpath(f'{archive_loc.name.split(".")[0]}_tmp.tar.bz2')
-        tmp_archive_loc = LocalFile(LocalFSConfig(loc=tmp_archive_file))
+        tmp_archive_loc = LocalFile(tmp_archive_file)
         if tmp_archive_file.exists():
             self.logger.error("Temporary archive file already exists, probable issue")
         with tarfile.open(tmp_archive_file, 'w|bz2') as new_archive:
@@ -550,3 +562,28 @@ class Storage():
         self.__check_storage_loc(self.archive_loc)
         self.__check_storage_loc(self.mutex_loc)
         self.logger.info("Environment setup")
+
+    def to_dict(self, full_export: bool=False) -> Dict:
+        """
+        Transforms all storage locations etc into processable storage locations
+        """
+        ret_dict =  {
+            'base_loc': _export_entry(self.base_loc),
+            'data_loc': _export_entry(self.data_loc.parent),
+            'report_loc': _export_entry(self.report_loc.parent),
+            'tmp_loc': _export_entry(self.tmp_loc),
+            'mutex_loc': _export_entry(self.mutex_loc),
+            'log_loc': _export_entry(self.log_loc),
+            'archive_loc': _export_entry(self.archive_loc.parent),
+            'ssh_interfaces': self.__ssh_interfaces.export_interfaces()
+        }
+        if full_export:
+            ret_dict.update({
+                'archive_files': [_export_entry(archive_file) \
+                    for archive_file in self.archive_files],
+                'halt_files': [_export_entry(halt_file) \
+                    for halt_file in self.halt_files],
+                'required_files': [_export_entry(required_file) \
+                    for required_file in self.required_files],
+            })
+        return ret_dict

@@ -2,22 +2,26 @@
 """remote_filesystem.py
 
 Author: neo154
-Version: 0.1.0
-Date Modified: 2023-04-28
+Version: 0.2.0
+Date Modified: 2023-11-15
 
 Defines interactions and remote filesystem objects
 this will alow for abstraction at storage level for just using and
 operating with multiple storage models that should support it
 """
 
+import os
 from io import BufferedReader, BufferedWriter, FileIO, TextIOWrapper
 from logging import Logger
 from pathlib import Path
+from stat import S_ISDIR, S_ISREG
 from tempfile import mkdtemp, mkstemp
-from typing import Literal, Union, Any
+from typing import Any, Dict, Generator, Literal, Union
 
-from observer.storage.models.storage_model_configs import RemoteFSConfig
 from observer.observer_logging import generate_logger
+from observer.storage.models.ssh.paramiko_conn import ParamikoConn
+from observer.storage.models.storage_location import StorageLocation
+from observer.storage.utils import ValidPathArgs, confirm_path_arg
 
 _DEFAULT_LOGGER = generate_logger(__name__)
 
@@ -36,37 +40,35 @@ def _recurse_delete(path: Path) -> None:
             _recurse_delete(sub_p)
         path.rmdir()
 
-class RemoteFile():
+class RemoteFile(StorageLocation):
     """Class that describes a remote file and interactions with it"""
 
-    def __init__(self, remote_obj: Union[dict, RemoteFSConfig], is_dir: bool=False) -> None:
-        if not isinstance(remote_obj, RemoteFSConfig):
-            remote_obj = RemoteFSConfig(**remote_obj)
-        self.__paramiko = remote_obj['is_paramiko']
-        self.__ssh_interface = remote_obj['ssh_inter']
-        self.__absolute_path = remote_obj['loc']
-        if self.absolute_path.suffix != '' and (is_dir or remote_obj['is_dir']):
-            raise ValueError(
-                'Incompatiable Types, path provided has suffixes and was declared as a dir'
-            )
+    def __init__(self, path_ref: ValidPathArgs,
+            ssh_inter: Union[dict, ParamikoConn]) -> None:
+        if not isinstance(ssh_inter, ParamikoConn):
+            ssh_inter = ParamikoConn(**ssh_inter)
+        self.__ssh_interface = ssh_inter
         self.__type = "remote_filesystem"
+        tmp_path = confirm_path_arg(path_ref)
+        if str(tmp_path)[0]=='.':
+            self.__absolute_path = Path(os.path.realpath(os.path.join(
+                self.__ssh_interface.getcwd(), str(tmp_path))))
+        else:
+            self.__absolute_path = tmp_path
         self.name = self.absolute_path.name
         self._tmp_file_ref: Path = None
         self.__resync = False
-        if is_dir is None:
-            if remote_obj is not None:
-                is_dir = remote_obj['is_dir']
-            else:
-                if self.absolute_path.suffix =='':
-                    is_dir = True
-        self.__is_dir = is_dir
+        self.__file_stat = None
+        if self.__ssh_interface.exists(self.__absolute_path):
+            self.__file_stat = self.__ssh_interface.stat(self.__absolute_path)
 
     def __str__(self) -> str:
         return f"Name:{self.name}, host:{self.__ssh_interface.host}, type:{self.__type}, "\
             f"path:{self.absolute_path}"
 
-    def __eq__(self, __o) -> bool:
-        return isinstance(__o, RemoteFile)&(self.absolute_path==__o.absolute_path)
+    def __eq__(self, __o: StorageLocation) -> bool:
+        return isinstance(__o, RemoteFile) & (self.absolute_path==__o.absolute_path) \
+            & (self.host_id==__o.host_id)
 
     def __del__(self):
         """Destructor for object, checks for tmp_file and if it exists, removes it"""
@@ -91,7 +93,7 @@ class RemoteFile():
 
         :returns: None
         """
-        if self.__is_dir:
+        if self.is_dir():
             self._tmp_file_ref = Path(mkdtemp()[1]).absolute()
         else:
             self._tmp_file_ref = Path(mkstemp()[1]).absolute()
@@ -149,7 +151,7 @@ class RemoteFile():
 
         :returns: LocalFile object of parent reference
         """
-        return RemoteFile(RemoteFSConfig(self.__absolute_path, self.__ssh_interface, True), True)
+        return RemoteFile(self.__absolute_path.parent, self.__ssh_interface)
 
     def exists(self) -> bool:
         """
@@ -158,7 +160,14 @@ class RemoteFile():
         :returns: Boolean for whether or not this obj exists
         """
         self.__check_sync_status()
-        return self.__ssh_interface.exists(self.absolute_path)
+        tmp_ret = self.__ssh_interface.exists(self.absolute_path)
+        if tmp_ret:
+            self.__update_stat()
+        return tmp_ret
+
+    def __update_stat(self) -> None:
+        """Gets updated stat reference for identification and basic file info"""
+        self.__file_stat = self.__ssh_interface.stat(self.absolute_path)
 
     def is_dir(self) -> bool:
         """
@@ -166,8 +175,9 @@ class RemoteFile():
 
         :returns: Boolean for whether or not this obj is a directory
         """
-        self.__check_sync_status()
-        return self.__ssh_interface.is_dir(self.absolute_path)
+        if self.exists():
+            return S_ISDIR(self.__file_stat.st_mode)
+        return False
 
     def is_file(self) -> bool:
         """
@@ -175,10 +185,11 @@ class RemoteFile():
 
         :returns: Wether or not object is a file and exists
         """
-        self.__check_sync_status()
-        return self.__ssh_interface.is_file(self.absolute_path)
+        if self.exists():
+            return S_ISREG(self.__file_stat.st_mode)
+        return False
 
-    def create(self) -> None:
+    def touch(self, overwrite: bool=False, parents: bool=False) -> None:
         """
         Creates an empty file at this location
 
@@ -188,8 +199,10 @@ class RemoteFile():
             self._tmp_file_ref.unlink(missing_ok=True)
             self._tmp_file_ref.touch()
         self.__ssh_interface.touch(self.absolute_path)
+        self.__update_stat()
 
-    def read(self, encoding: str='utf-8', logger: Logger=_DEFAULT_LOGGER) -> str:
+    def read(self, mode: Literal['r', 'rb']='r', encoding: str='utf-8',
+            logger: Logger=_DEFAULT_LOGGER) -> Union[str, bytes]:
         """
         Reads file and returns a binary string of the file contents
         *NOTE: Starting simple and then can get more complex later
@@ -198,18 +211,12 @@ class RemoteFile():
         :returns: File contents
         """
         self.__check_sync_status()
+        if not self.exists():
+            raise FileNotFoundError
         if not self.is_file():
             raise RuntimeError("File cannot be read, doesn't exist or isn't a file")
-        ret_contents = ''
         # Identifying if we need a local copy or not
         logger.debug("Reading contents of '%s' and returning string", str(self.absolute_path))
-        if not self.__paramiko:
-            if self._tmp_file_ref is None:
-                self.__create_tmp_reference()
-            self.__ssh_interface.pull_file(self.absolute_path, self._tmp_file_ref)
-            with self._tmp_file_ref.open('r', encoding=encoding) as tmp_ref:
-                ret_contents = tmp_ref.read()
-            return ret_contents
         return self.__ssh_interface.read(self.absolute_path).decode(encoding)
 
     def open(self, mode: Literal['r', 'rb', 'w', 'wb', 'a'], encoding: str='utf-8') \
@@ -231,7 +238,8 @@ class RemoteFile():
             self.__resync = True
         return open(self._tmp_file_ref, mode, encoding=encoding)
 
-    def delete(self, missing_ok: bool=False, logger: Logger=_DEFAULT_LOGGER) -> None:
+    def delete(self, missing_ok: bool=False, recurisve: bool=False,
+            logger: Logger=_DEFAULT_LOGGER) -> None:
         """
         Deletes local file
 
@@ -247,8 +255,9 @@ class RemoteFile():
                     self._tmp_file_ref.unlink()
                 else:
                     _recurse_delete(self._tmp_file_ref)
+        self.__file_stat = None
 
-    def move(self, other_loc, logger: Logger=_DEFAULT_LOGGER) -> None:
+    def move(self, other_loc: StorageLocation, logger: Logger=_DEFAULT_LOGGER) -> None:
         """
         Moves file from one location to a new location that is provided
 
@@ -273,8 +282,9 @@ class RemoteFile():
         else:
             raise NotImplementedError("Other versions not implemented yet, coming soon")
         logger.info("Successfully moved '%s' to '%s'", self.absolute_path, other_loc.name)
+        self.__file_stat = None
 
-    def copy(self, other_loc, logger: Logger=_DEFAULT_LOGGER) -> None:
+    def copy(self, other_loc: StorageLocation, logger: Logger=_DEFAULT_LOGGER) -> None:
         """
         Copies file contents to new destination
 
@@ -295,7 +305,8 @@ class RemoteFile():
             logger.debug("Using remote copy to other remote system")
             self.__ssh_interface.push_file(str(self._tmp_file_ref), str(other_loc.absolute_path))
         else:
-            raise NotImplementedError("Other versions not implemented yet, coming soon")
+            raise NotImplementedError("Other versions not implemented for "\
+                f"{other_loc.storage_type}")
 
     def rotate(self, logger: Logger=_DEFAULT_LOGGER) -> None:
         """
@@ -307,8 +318,8 @@ class RemoteFile():
         self.__check_sync_status()
         counter = 0
         while True:
-            tmp_file = RemoteFile(RemoteFSConfig(Path(f"{self.absolute_path}.old{counter}"),
-                self.__ssh_interface), self.__is_dir)
+            tmp_file = RemoteFile(Path(f"{self.absolute_path}.old{counter}"),
+                self.__ssh_interface)
             logger.debug("Testing path: %s", tmp_file.absolute_path)
             if not tmp_file.exists():
                 self.__ssh_interface.move(self.absolute_path, tmp_file.absolute_path)
@@ -316,16 +327,17 @@ class RemoteFile():
                 return
             counter += 1
 
-    def create_loc(self, _: bool=False) -> None:
+    def mkdir(self, parents: bool=False) -> None:
         """
         Creates directory and parents if it is declared
 
         :param parents: Boolean indicating whether or not to create parents
         :returns: None
         """
-        self.__ssh_interface.create_loc(self.absolute_path)
+        self.__ssh_interface.mkdir(self.absolute_path, parents)
+        self.__update_stat()
 
-    def join_loc(self, loc_addition: Union[str, Path], is_dir: bool=None) -> Any:
+    def join_loc(self, loc_addition: str) -> StorageLocation:
         """
         Joins current location given to another based on the path or string
 
@@ -335,7 +347,14 @@ class RemoteFile():
         """
         if isinstance(loc_addition, str):
             loc_addition = self.absolute_path.joinpath(loc_addition)
-        return RemoteFile(RemoteFSConfig(loc_addition, self.__ssh_interface, is_dir), is_dir)
+        return RemoteFile(loc_addition, self.__ssh_interface)
+
+    def iter_location(self) -> Generator[StorageLocation, None, None]:
+        """Iters a directory to get sub items"""
+        if not self.is_dir():
+            raise AssertionError("Path identified doesn't exist or isn't dir")
+        for item in self.__ssh_interface.iterdir(self.absolute_path):
+            yield RemoteFile(self.absolute_path.joinpath(item), self.__ssh_interface)
 
     def get_archive_ref(self) -> Path:
         """
@@ -367,3 +386,12 @@ class RemoteFile():
         :returns: None
         """
         self.__ssh_interface.pull_file(self.absolute_path, local_dest)
+
+    def to_dict(self) -> Dict:
+        """
+        Gets dictionary description of remote file object
+
+        :returns: Dictionary of config for remote location
+        """
+        return {'path_ref': str(self.absolute_path),
+            'ssh_inter': self.__ssh_interface.export_config()}

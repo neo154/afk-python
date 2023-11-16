@@ -9,7 +9,7 @@ from observer.task import BaseTask
 class TestingTask1(BaseTask):
     """Testing object for testing some basic setup"""
     def __init__(self, storage_config: Dict, sleep_timer: int=5) -> None:
-        super().__init__("testing_task_type1", "testing_task_name1", has_mutex=True,
+        super().__init__("testing_task_type1", "testing_task_name1", 'testing', has_mutex=True,
             has_archive=False, override=False, storage_config=storage_config)
         self.sleep_timer = sleep_timer
 

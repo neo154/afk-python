@@ -12,10 +12,6 @@ from observer.storage.models.remote_filesystem import \
     RemoteFile  # pylint: disable=wrong-import-position
 from observer.storage.models.storage_models import \
     generate_ssh_interface  # pylint: disable=wrong-import-position
-from observer.storage.models.storage_models import \
-    path_to_storage_location  # pylint: disable=wrong-import-position
-from observer.storage.models.storage_models import \
-    remote_path_to_storage_loc  # pylint: disable=wrong-import-position
 from observer.storage.storage import \
     Storage  # pylint: disable=wrong-import-position
 
@@ -36,7 +32,7 @@ except ImportError:
     _HAS_PARAMIKO = False
 
 
-class TestCase05StorageTesting(unittest.TestCase):
+class TestCase01StorageTesting(unittest.TestCase):
     """Storage testing with local and """
 
     @classmethod
@@ -44,10 +40,7 @@ class TestCase05StorageTesting(unittest.TestCase):
         cls.storage = Storage(storage_config={
             'base_loc': {
                 'config_type': 'local_filesystem',
-                'config': {
-                    'loc': _BASE_LOC,
-                    'is_dir': True
-                }
+                'config': { 'path_ref': _BASE_LOC }
             }
         })
         priv_key = Path(__file__).parent\
@@ -57,9 +50,8 @@ class TestCase05StorageTesting(unittest.TestCase):
         cls._docker_ref = DockerImage(priv_key, pub_key)
         cls._docker_ref.start()
         cls.ssh_interface = generate_ssh_interface(priv_key, 'localhost', 'test_user', port=2222)
-        cls.local_file: LocalFile = path_to_storage_location(_BASE_LOC.joinpath('test.txt'), False)
-        cls.remote_ref: RemoteFile = remote_path_to_storage_loc(Path('/config/test2.txt'),
-            cls.ssh_interface, False)
+        cls.local_file = LocalFile(_BASE_LOC.joinpath('test.txt'))
+        cls.remote_ref = RemoteFile(Path('/config/test2.txt'), cls.ssh_interface)
         return super().setUpClass()
 
     @classmethod
@@ -163,10 +155,7 @@ class TestCase05StorageTesting(unittest.TestCase):
         """Testing ssh interface interactions"""
         assert self.storage.ssh_interfaces.empty() \
             and self.storage.ssh_interfaces.get_ids() == []
-        expected_method = 'default'
-        if _HAS_PARAMIKO:
-            expected_method = 'paramiko'
-        expected_id = f'localhost-test_user-{expected_method}'
+        expected_id = 'localhost-test_user'
         self.storage.ssh_interfaces.add(self.ssh_interface)
         assert not self.storage.ssh_interfaces.empty()
         assert self.storage.ssh_interfaces.get_ids() == [expected_id]
@@ -202,17 +191,17 @@ class TestCase05StorageTesting(unittest.TestCase):
 
     def test15_rotate_location(self):
         """Testint file rotation"""
-        self.local_file.create(True, True)
-        tmp_loc = path_to_storage_location(_BASE_LOC.joinpath('test.txt.old0'), False)
-        tmp_loc1 = path_to_storage_location(_BASE_LOC.joinpath('test.txt.old1'), False)
+        self.local_file.touch(True, True)
+        tmp_loc = LocalFile(_BASE_LOC.joinpath('test.txt.old0'))
+        tmp_loc1 = LocalFile(_BASE_LOC.joinpath('test.txt.old1'))
         assert self.local_file.exists() & ~(tmp_loc.exists() | tmp_loc1.exists())
         self.storage.rotate_location(self.local_file)
         assert ~self.local_file.exists() & tmp_loc.exists() & ~tmp_loc1.exists()
-        self.local_file.create(False, True)
+        self.local_file.touch(False, True)
         assert self.local_file.exists() & tmp_loc.exists() & ~tmp_loc1.exists()
         self.storage.rotate_location(self.local_file)
         assert ~self.local_file.exists() & tmp_loc.exists() & tmp_loc1.exists()
-        self.local_file.create(False, True)
+        self.local_file.touch(False, True)
         assert self.local_file.exists() & tmp_loc.exists() & tmp_loc1.exists()
         self.local_file.delete()
         tmp_loc.delete()
@@ -221,10 +210,10 @@ class TestCase05StorageTesting(unittest.TestCase):
 
     def test16_mutex(self):
         """Testing storage mutex interactions"""
-        # self.storage.mutex_loc.mkdir(True)
+        self.storage.mutex_loc.mkdir(True)
         old_loc = self.storage.mutex_loc
         new_loc: LocalFile = self.storage.base_loc.join_loc('mutex')
-        new_loc.create_loc(True)
+        new_loc.touch(True)
         self.storage.mutex_loc = new_loc
         assert old_loc.exists() & new_loc.exists()
         assert self.storage.mutex_loc!=old_loc and self.storage.mutex_loc==new_loc
@@ -233,11 +222,12 @@ class TestCase05StorageTesting(unittest.TestCase):
         mutex_loc = new_loc.join_loc(f'{self.storage.job_desc}_'\
             f'{self.storage.report_date_str}.mutex')
         assert self.storage.mutex==mutex_loc
+        self.storage.mutex_loc = old_loc
         mutex_loc.delete()
 
     def test17_archive_creation(self):
         """Test archive creation"""
-        self.storage.archive_loc.create_loc(True)
+        self.storage.archive_loc.mkdir(True)
         assert self.storage.archive_loc.exists()
         first_text = 'HI THERE'
         second_text = 'DIFFERENT TEXT'
@@ -259,6 +249,50 @@ class TestCase05StorageTesting(unittest.TestCase):
             assert tmp_file.extractfile(self.remote_ref.name).read().decode('utf-8')==second_text
         tmp_file.close()
         self.storage.archive_file.delete()
+
+    def test18_storage_export(self):
+        """Test storage exporting and creation of storage from that"""
+        exported_config = self.storage.to_dict()
+        local_path = str(_BASE_LOC)
+        expected_config = {
+            'base_loc': {
+                'config_type': 'local_filesystem', 'config': {
+                    'path_ref': f'{local_path}'
+                }
+            },
+            'data_loc': {
+                'config_type': 'local_filesystem', 'config': {
+                    'path_ref': f'{local_path}/data'
+                }
+            },
+            'report_loc': {
+                'config_type': 'local_filesystem', 'config': {
+                    'path_ref': f'{local_path}/reports'
+                }
+            },
+            'tmp_loc': {
+                'config_type': 'local_filesystem', 'config': {
+                    'path_ref': f'{local_path}/tmp'
+                }
+            },
+            'mutex_loc': {
+                'config_type': 'local_filesystem', 'config': {
+                    'path_ref': f'{local_path}/tmp'
+                }
+            },
+            'log_loc': {
+                'config_type': 'local_filesystem', 'config': {
+                    'path_ref': f'{local_path}/logs'
+                }
+            },
+            'archive_loc': {
+                'config_type': 'local_filesystem', 'config': {
+                    'path_ref': f'{local_path}/archives'
+                }
+            },
+            'ssh_interfaces': []}
+        assert exported_config == expected_config
+        Storage(storage_config=exported_config)
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
