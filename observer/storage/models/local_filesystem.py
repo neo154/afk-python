@@ -2,8 +2,8 @@
 """local_filesystem.py
 
 Author: neo154
-Version: 0.2.0
-Date Modified: 2023-11-24
+Version: 0.2.1
+Date Modified: 2023-11-25
 
 Defines interactions and local filesystem objects
 this will alow for abstraction at storage level for just using and
@@ -17,8 +17,10 @@ from shutil import copy2, copytree
 from typing import Dict, Generator, Literal, Union
 
 from observer.observer_logging import generate_logger
-from observer.storage.models.storage_location import StorageLocation
-from observer.storage.utils import ValidPathArgs, confirm_path_arg
+from observer.storage.models.storage_location import (StorageLocation,
+                                                      SupportModes, WriteModes)
+from observer.storage.utils import (ValidPathArgs, confirm_path_arg,
+                                    raw_hash_check, sync_files)
 
 _DEFAULT_LOGGER = generate_logger(__name__)
 
@@ -44,12 +46,35 @@ class LocalFile(StorageLocation):
         self._absolute_path = confirm_path_arg(path_ref).absolute()
         self.__type = "local_filesystem"
         self.name = self.absolute_path.name
+        self.__stat_info = None
+        self.__possibly_changed = False
+        if self._absolute_path.exists():
+            self.__stat_info = self._absolute_path.stat()
 
     def __str__(self) -> str:
         return f"Name:{self.name}, type:{self.__type}, path:{self.absolute_path}"
 
     def __eq__(self, __o: StorageLocation) -> bool:
         return isinstance(__o, LocalFile)&(self.absolute_path==__o.absolute_path)
+
+    def __update_stat(self) -> None:
+        """
+        Updates stat information of a stat
+
+        :returns: None
+        """
+        if self._absolute_path.exists():
+            self.__stat_info = self._absolute_path.stat()
+
+    def __check_status(self) -> None:
+        """
+        Checks status of files depending on whether metadata might have changed before another
+        interaction that would require or rely on stat
+        """
+        if self.__possibly_changed:
+            self.__possibly_changed = False
+            if self.exists():
+                self.__update_stat()
 
     @property
     def absolute_path(self) -> Path:
@@ -96,6 +121,30 @@ class LocalFile(StorageLocation):
         """
         return LocalFile(self.absolute_path.parent)
 
+    @property
+    def size(self) -> Union[int, None]:
+        """
+        Parent of the current LocalFile reference
+
+        :returns: LocalFile object of parent reference
+        """
+        self.__check_status()
+        if self.__stat_info is None:
+            return None
+        return self.__stat_info.st_size
+
+    @property
+    def m_time(self) -> Union[float, None]:
+        """
+        Parent of the current LocalFile reference
+
+        :returns: LocalFile object of parent reference
+        """
+        self.__check_status()
+        if self.__stat_info is None:
+            return None
+        return self.__stat_info.st_mtime
+
     def exists(self) -> bool:
         """
         Returns whether or not this object exists or not
@@ -120,15 +169,18 @@ class LocalFile(StorageLocation):
         """
         return self.absolute_path.is_file()
 
-    def touch(self, overwrite: bool=False, parents: bool=False) -> None:
+    def touch(self, exist_ok: bool=False, parents: bool=False) -> None:
         """
         Creates an empty file at this location
 
+        :param exist_ok: Boolean of whether file already existing is ok
+        :param parents: Boolean if directory parents need to be created
         :returns: None
         """
         if (not self.absolute_path.parent.exists()) and parents:
             self.absolute_path.parent.mkdir(parents=True)
-        self.absolute_path.touch(exist_ok=overwrite)
+        self.absolute_path.touch(exist_ok=exist_ok)
+        self.__update_stat()
 
     def read(self, mode: Literal['r', 'rb']='r', encoding: str='utf-8',
             logger: Logger=_DEFAULT_LOGGER) -> str:
@@ -142,25 +194,26 @@ class LocalFile(StorageLocation):
             raise RuntimeError("File cannot be read, doesn't exist or isn't a file")
         logger.debug("Reading contents of '%s' and returning string", str(self.absolute_path))
         if mode=='r':
-            with self.absolute_path.open(mode, -1, encoding) as tmp_ref:
-                return tmp_ref.read()
+            return self.absolute_path.read_text(encoding)
         if mode=='rb':
-            with self.absolute_path.open('rb') as tmp_ref:
-                return tmp_ref.read()
+            return self.absolute_path.read_bytes()
         raise ValueError(f"Do not recognize mode provided: {mode}")
 
-    def open(self, mode: Literal['r', 'rb', 'w', 'wb', 'a'], encoding: str='utf-8') \
+    def open(self, mode: SupportModes, encoding: str=None) \
             -> Union[TextIOWrapper, BufferedReader, BufferedWriter, FileIO]:
         """
         Opens local file and returns open file if exists for stream reading
 
         :returns: FileIO objects depending on modes and file type
         """
-        if not self.absolute_path.is_file() and not mode in ['w', 'wb', 'a']:
+        _write_mode = mode in WriteModes
+        if _write_mode:
+            self.__possibly_changed = True
+        if not self.absolute_path.is_file() and not _write_mode:
             raise RuntimeError("File cannot be read, doesn't exist or isn't a file")
         return self.absolute_path.open(mode, encoding=encoding)
 
-    def delete(self, missing_ok: bool=False, recurisve: bool=False,
+    def delete(self, missing_ok: bool=False, recursive: bool=False,
             logger: Logger=_DEFAULT_LOGGER) -> None:
         """
         Deletes local file
@@ -168,13 +221,18 @@ class LocalFile(StorageLocation):
         :returns: None
         """
         logger.info("Deleting file reference: '%s'", self.absolute_path)
-        _recurse_delete(self.absolute_path, missing_ok)
+        if recursive:
+            _recurse_delete(self.absolute_path, missing_ok)
+        else:
+            self.absolute_path.unlink(missing_ok)
+        self.__stat_info = None
 
-    def move(self, other_loc, logger: Logger=_DEFAULT_LOGGER) -> None:
+    def move(self, other_loc: StorageLocation, logger: Logger=_DEFAULT_LOGGER) -> None:
         """
         Moves file from one location to a new location that is provided
 
         :param other_loc: Other storage location object, might be different depending on support
+        :param logger: Logger object
         :returns: None
         """
         if other_loc.storage_type=='local_filesystem':
@@ -189,12 +247,14 @@ class LocalFile(StorageLocation):
         else:
             raise NotImplementedError("Other versions not implemented yet, coming soon")
         logger.info("Successfully moved '%s' to '%s'", self.absolute_path, other_loc.name)
+        self.__stat_info = None
 
-    def copy(self, other_loc, logger: Logger=_DEFAULT_LOGGER) -> None:
+    def copy(self, other_loc: StorageLocation, logger: Logger=_DEFAULT_LOGGER) -> None:
         """
         Copies file contents to new destination
 
         :param other_loc: Other storage location object, might be different depending on support
+        :param logger: Logger object
         :returns: None
         """
         if other_loc.storage_type=='local_filesystem':
@@ -205,6 +265,7 @@ class LocalFile(StorageLocation):
                 copy2(str(self.absolute_path), str(other_loc.absolute_path))
         elif other_loc.storage_type=='remote_filesystem':
             logger.debug("Using local copy and pushing to remote filesystem")
+            # Update to open and readinto operations, also need a recursive function here
             other_loc.push_file(self.absolute_path)
         else:
             raise NotImplementedError("Other versions not implemented yet, coming soon")
@@ -213,6 +274,7 @@ class LocalFile(StorageLocation):
         """
         Rotates file based on location and moves the current file for necessary operations
 
+        :param logger: Logger object
         :returns: None
         """
         counter = 0
@@ -221,6 +283,7 @@ class LocalFile(StorageLocation):
             logger.debug("Testing path: %s", new_name)
             if not new_name.exists():
                 self.absolute_path.rename(new_name)
+                self.__stat_info = None
                 logger.debug("Moved '%s' to '%s'", self.absolute_path, new_name)
                 return
             counter += 1
@@ -228,8 +291,12 @@ class LocalFile(StorageLocation):
     def mkdir(self, parents: bool=False) -> None:
         """
         Creates directory and parents if it is declared
+
+        :param parents: Boolean to indicate whether parents should be created or not
+        :returns None:
         """
         self.absolute_path.mkdir(parents=parents, exist_ok=True)
+        self.__update_stat()
 
     def iter_location(self) -> Generator[StorageLocation, None, None]:
         """
@@ -247,17 +314,45 @@ class LocalFile(StorageLocation):
         Joins current location given to another based on the path or string
 
         :param loc_addition: String or path to generate local file ref for usage
-        :param as_dir: Boolean of whether or not to treat location as dir
+        :return: LocalFile object combined with next part of the path
         """
         return LocalFile(self.absolute_path.joinpath(loc_addition))
 
-    def get_archive_ref(self) -> Path:
+    def sync_locations(self, src_file: StorageLocation, use_metadata: bool=True,
+            full_hashcheck: bool=False, logger: Logger=_DEFAULT_LOGGER) -> None:
         """
-        Getter for archive references for creation of the archive
+        Sync between two locations with a local filesystem using rsync connection. It's recommended
+        that this is done to a local filesystem, or something that isn't just a remote server for
+        performance, and in the future could be done with other types of storage.
 
-        :returns: Path object for archive file creation
+        :param src_file: StorageLocation of authoritative file-like object that will be synced
+        :param use_metadata: Boolean that allows the use of metadata to speed up checks
+        :param full_hashcheck: Boolean that forces a full hashcheck of the file for integrity
+        :param logger: Logger object
+        :returns: None
         """
-        return self.absolute_path
+        sub_file: StorageLocation
+        if not src_file.exists():
+            raise FileNotFoundError(f"Not able to locate {src_file}")
+        # If destination location doesn't exist but source does
+        if not self.exists():
+            src_file.copy(self, logger)
+        elif src_file.is_dir():
+            for sub_file in src_file.iter_location():
+                self.join_loc(sub_file.name).sync_locations(sub_file, use_metadata,
+                    full_hashcheck, logger)
+        elif src_file.is_file():
+            if not self.exists():
+                src_file.copy(self, logger)
+            else:
+                if (use_metadata and (self.m_time!=src_file.m_time or self.size!=src_file.size)) \
+                        or (not use_metadata or full_hashcheck):
+                    with src_file.open('rb') as raw_src:
+                        with self.open('rb+') as raw_dest:
+                            if not full_hashcheck or raw_hash_check(raw_src, raw_dest):
+                                sync_files(raw_src, raw_dest)
+        else:
+            raise ValueError(f"Not supported file type at: {src_file}")
 
     def to_dict(self) -> Dict:
         """

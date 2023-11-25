@@ -2,8 +2,8 @@
 """storage_models.py
 
 Author: neo154
-Version: 0.2.0
-Date Modified: 2023-11-15
+Version: 0.2.1
+Date Modified: 2023-11-25
 
 Module that acts as a dummy for the variables and objects that are created
 and required for observer storage
@@ -14,7 +14,7 @@ from typing import Dict, List, Literal, Union
 
 from observer.storage.models.local_filesystem import LocalFile
 from observer.storage.models.remote_filesystem import RemoteFile
-from observer.storage.models.ssh.paramiko_conn import ParamikoConn
+from observer.storage.models.ssh.sftp import RemoteConnector
 from observer.storage.models.storage_location import StorageLocation
 
 
@@ -60,7 +60,7 @@ def path_to_storage_location(path_ref: Path) -> StorageLocation:
         'config': {'path_ref': path_ref}})
 
 def generate_ssh_interface(ssh_key: Path=None, host: str=None, userid: str=None,
-        port: int=22) -> ParamikoConn:
+        port: int=22) -> RemoteConnector:
     """
     Generates SSH interface for Storage location
 
@@ -68,14 +68,14 @@ def generate_ssh_interface(ssh_key: Path=None, host: str=None, userid: str=None,
     :param host: String of host ID/IP of remote device
     :param userid: String of username to login for ssh connections
     :param port: Integer of the port for the SSH interface
-    :returns: ParamikoConnection to host
+    :returns: RemoteConnectorection to host
     """
     if not ssh_key.exists():
         raise FileNotFoundError(f"Cannot locate keyfile {ssh_key}")
-    return ParamikoConn(ssh_key, host, userid, port)
+    return RemoteConnector(ssh_key, host, userid, port)
 
 def remote_path_to_storage_loc(path_ref: Path,
-        ssh_interface: Union[ParamikoConn, dict]) -> StorageLocation:
+        ssh_interface: Union[RemoteConnector, dict]) -> StorageLocation:
     """
     Generates a storage location from path and other local variables
 
@@ -96,8 +96,9 @@ class SSHInterfaceCollection():
     """SSH Interface collection for Storage to simplify the management of them"""
 
     def __init__(self,
-            interfaces: Union[Dict, List[Dict], ParamikoConn, List[ParamikoConn]]=None) -> None:
-        self.__interfaces: List[ParamikoConn] = []
+                interfaces: Union[Dict, List[Dict], RemoteConnector, List[RemoteConnector]]=None
+            ) -> None:
+        self.__interfaces: List[RemoteConnector] = []
         if interfaces is not None and len(interfaces)>0:
             self.add(interfaces)
 
@@ -109,12 +110,12 @@ class SSHInterfaceCollection():
         """
         return len(self.__interfaces) == 0
 
-    def get_interface(self, int_id: str) -> ParamikoConn:
+    def get_interface(self, int_id: str) -> RemoteConnector:
         """
         Gets SSH interface for a given ID
 
         :param int_id: String identifying the host and exact connection configuration
-        :returns: ParamikoConnection to remote device
+        :returns: RemoteConnectorection to remote device
         """
         for interface in self.__interfaces:
             if str(interface)==int_id:
@@ -130,7 +131,8 @@ class SSHInterfaceCollection():
         return [ str(interface) for interface in self.__interfaces ]
 
     def add(self,
-            new_interfaces: Union[Dict, List[Dict], ParamikoConn, List[ParamikoConn]]) -> None:
+                new_interfaces: Union[Dict, List[Dict], RemoteConnector, List[RemoteConnector]]
+            ) -> None:
         """
         Adds a single interface fo a list of given infervaces via the interfaces themselves or
         their configurations in dictionary form
@@ -140,8 +142,8 @@ class SSHInterfaceCollection():
         """
         if not isinstance(new_interfaces, list):
             new_interfaces = [new_interfaces]
-        if not isinstance(new_interfaces[0], ParamikoConn):
-            new_interfaces = [ ParamikoConn(**interface) for interface in new_interfaces ]
+        if not isinstance(new_interfaces[0], RemoteConnector):
+            new_interfaces = [ RemoteConnector(**interface) for interface in new_interfaces ]
         current_interfaces = self.get_ids()
         for new_interface in new_interfaces:
             if not new_interface in current_interfaces:
