@@ -21,10 +21,17 @@ _BASE_LOC = Path(__file__).parent.parent
 
 def _calculate_first_run(min_interval: int=None, h_interval: int=None,
         start_time: datetime=None) -> datetime:
-    """Calculates next run of task"""
-    tmp_now = datetime.now()
-    if tmp_now.second>=50:
-        sleep(10)
+    """
+    Calculates next run of task in a crontab like method for given minute and hour intervals
+
+    :param min_interval: Integer from 0-60 for number of minutes between executions
+    :param h_interval: Integer greater than 0 with number of hours between executions
+    :param start_time: Datetime of when the starting execution will execute
+    :returns: Datetime of next given execution of a task
+    """
+    if (min_interval is not None and min_interval < 0) \
+            or (h_interval is not None and h_interval < 0):
+        raise ValueError("Min interval or Hour interval provided was negative")
     now = datetime.now()
     if all(item in [0, None] for item in [min_interval, h_interval]):
         if start_time is not None and start_time>=now:
@@ -33,8 +40,6 @@ def _calculate_first_run(min_interval: int=None, h_interval: int=None,
     time_tuple = now.date().timetuple()[0:3]
     if min_interval is None:
         return datetime(*time_tuple, now.hour+1, minute=0)
-    if min_interval > 59:
-        raise ValueError("Cannot process minute interval greater than 59 minutes, use hours")
     if h_interval is None:
         h_interval = 0
     return datetime(*time_tuple, now.hour + h_interval,

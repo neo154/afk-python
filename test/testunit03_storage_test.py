@@ -15,7 +15,7 @@ from observer.storage.models.storage_models import \
 from observer.storage.storage import \
     Storage  # pylint: disable=wrong-import-position
 
-_BASE_LOC = Path(__file__).parent.parent.joinpath('tmp')
+_BASE_LOC = Path(__file__).parent.joinpath('tmp')
 
 try:
     from test.test_libraries.docker_image import DockerImage
@@ -25,12 +25,15 @@ try:
 except ImportError:
     _HAS_DOCKER = False
 
-try:
-    import paramiko  # pylint: disable=unused-import
-    _HAS_PARAMIKO = True
-except ImportError:
-    _HAS_PARAMIKO = False
-
+def recurse_delete(path: Path):
+    """Recursive deletion"""
+    if path.is_file():
+        path.unlink()
+        return
+    if path.is_dir():
+        for sub_p in path.iterdir():
+            recurse_delete(sub_p)
+        path.rmdir()
 
 class TestCase01StorageTesting(unittest.TestCase):
     """Storage testing with local and """
@@ -227,6 +230,13 @@ class TestCase01StorageTesting(unittest.TestCase):
 
     def test17_archive_creation(self):
         """Test archive creation"""
+        # Clearing out any possible archive and tmp archive references
+        archive_dir = self.storage.archive_loc.absolute_path.parent
+        tmp_dir = self.storage.tmp_loc.absolute_path
+        for old_ref in archive_dir.iterdir():
+            recurse_delete(old_ref)
+        for old_ref in tmp_dir.iterdir():
+            recurse_delete(old_ref)
         self.storage.archive_loc.mkdir(True)
         assert self.storage.archive_loc.exists()
         first_text = 'HI THERE'
