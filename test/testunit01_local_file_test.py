@@ -12,6 +12,20 @@ if str(_LIB_BASE) not in sys.path:
     sys.path.insert(1, str(_LIB_BASE))
 
 from observer.storage.models import LocalFile
+from observer.storage.utils.rsync import raw_hash_check
+from test.test_libraries.junktext import LOREMIPSUM_PARAGRAPH, LOREMIPSUM_PARAGRAPH_DIFF
+
+def recurse_delete(path: Path):
+    """Recursive deletion"""
+    if not path.exists():
+        return
+    if path.is_file():
+        path.unlink()
+        return
+    if path.is_dir():
+        for sub_p in path.iterdir():
+            recurse_delete(sub_p)
+        path.rmdir()
 
 class TestCase01LocalFiles(unittest.TestCase):
     """Testing for LocalFile objects"""
@@ -175,11 +189,7 @@ class TestCase01LocalFiles(unittest.TestCase):
         rot_loc1.delete()
         rot_loc2.delete()
 
-    def test12_get_archiveref(self):
-        """Testing archive reference production"""
-        assert self.local_file.absolute_path == self.local_file.get_archive_ref()
-
-    def test13_get_dict_ref(self):
+    def test12_get_dict_ref(self):
         """Testing dictionary export of a local file object"""
         local_ref = _BASE_LOC.joinpath('test.txt.old0')
         rot_loc1 = LocalFile(_BASE_LOC.joinpath('test.txt.old0'))
@@ -187,6 +197,61 @@ class TestCase01LocalFiles(unittest.TestCase):
         assert expected_dict==rot_loc1.to_dict()
         second_ref = LocalFile(**rot_loc1.to_dict())
         assert second_ref == rot_loc1
+
+    def test13_sync_locations(self):
+        """Testing rsync between files"""
+        local_ref = _BASE_LOC.joinpath('lorem_ipsum.txt')
+        new_local_ref = _BASE_LOC.joinpath('lorem_ipsum_diff.txt')
+        local_dir1 = _BASE_LOC.joinpath('src_dir')
+        local_dir2 = _BASE_LOC.joinpath('new_dir')
+        local_dir3 = _BASE_LOC.joinpath('new_created_dir')
+        recurse_delete(local_ref)
+        recurse_delete(new_local_ref)
+        recurse_delete(local_dir1)
+        recurse_delete(local_dir2)
+        recurse_delete(local_dir3)
+        local_loc1 = LocalFile(local_ref)
+        local_loc2 = LocalFile(new_local_ref)
+        local_stor_loc1 = LocalFile(local_dir1)
+        local_stor_loc2 = LocalFile(local_dir2)
+        local_stor_loc3 = LocalFile(local_dir3)
+        local_dir1.mkdir()
+        local_dir2.mkdir()
+        with local_loc1.open('w', encoding='utf-8') as tmp_ref:
+            _ = tmp_ref.write(LOREMIPSUM_PARAGRAPH)
+        with local_loc2.open('w', encoding='utf-8') as tmp_ref:
+            _ = tmp_ref.write(LOREMIPSUM_PARAGRAPH_DIFF)
+        with local_loc1.open('rb') as tmp_ref1:
+            with local_loc2.open('rb') as tmp_ref2:
+                assert not raw_hash_check(tmp_ref1, tmp_ref2)
+        local_loc2.sync_locations(local_loc1)
+        with local_loc1.open('rb') as tmp_ref1:
+            with local_loc2.open('rb') as tmp_ref2:
+                assert raw_hash_check(tmp_ref1, tmp_ref2)
+        local_ref.rename(local_dir1.joinpath(local_ref.name))
+        new_local_ref.rename(local_dir1.joinpath(new_local_ref.name))
+        with local_dir2.joinpath(local_ref.name).open('w', encoding='utf-8') as tmp_ref:
+            _ = tmp_ref.write(LOREMIPSUM_PARAGRAPH_DIFF)
+        with local_dir2.joinpath(local_ref.name).open('rb') as tmp_ref1:
+            with local_dir1.joinpath(local_ref.name).open('rb') as tmp_ref2:
+                assert not raw_hash_check(tmp_ref1, tmp_ref2)
+        local_stor_loc2.sync_locations(local_stor_loc1)
+        with local_dir2.joinpath(local_ref.name).open('rb') as tmp_ref1:
+            with local_dir1.joinpath(local_ref.name).open('rb') as tmp_ref2:
+                assert raw_hash_check(tmp_ref1, tmp_ref2)
+        with local_dir2.joinpath(new_local_ref.name).open('rb') as tmp_ref1:
+            with local_dir1.joinpath(new_local_ref.name).open('rb') as tmp_ref2:
+                assert raw_hash_check(tmp_ref1, tmp_ref2)
+        local_stor_loc3.sync_locations(local_stor_loc1)
+        with local_dir3.joinpath(local_ref.name).open('rb') as tmp_ref1:
+            with local_dir1.joinpath(local_ref.name).open('rb') as tmp_ref2:
+                assert raw_hash_check(tmp_ref1, tmp_ref2)
+        with local_dir3.joinpath(new_local_ref.name).open('rb') as tmp_ref1:
+            with local_dir1.joinpath(new_local_ref.name).open('rb') as tmp_ref2:
+                assert raw_hash_check(tmp_ref1, tmp_ref2)
+        recurse_delete(local_dir1)
+        recurse_delete(local_dir2)
+        recurse_delete(local_dir3)
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

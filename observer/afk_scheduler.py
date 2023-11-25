@@ -1,8 +1,8 @@
 """afk_scheduler.py
 
 Author: neo154
-Version: 0.1.0
-Date Modified: 2022-11-15
+Version: 0.1.1
+Date Modified: 2022-11-25
 
 For running the scheudler for tasks and tasks
 """
@@ -30,7 +30,8 @@ def _calculate_first_run(min_interval: int=None, h_interval: int=None,
     :param start_time: Datetime of when the starting execution will execute
     :returns: Datetime of next given execution of a task
     """
-    if min_interval < 0 or h_interval < 0:
+    if (min_interval is not None and min_interval < 0) \
+            or (h_interval is not None and h_interval < 0):
         raise ValueError("Min interval or Hour interval provided was negative")
     now = datetime.now()
     if all(item in [0, None] for item in [min_interval, h_interval]):

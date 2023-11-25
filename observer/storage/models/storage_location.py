@@ -1,8 +1,8 @@
 """storage_location.py
 
 Author: neo154
-Version: 0.1.0
-Date Modified: 2023-08-24
+Version: 0.1.1
+Date Modified: 2023-11-25
 
 Module that defines the interface for storage locations and which methods they are required to
 implement
@@ -18,6 +18,8 @@ from observer.observer_logging import generate_logger
 
 _DEFAULT_LOGGER = generate_logger(__name__)
 
+WriteModes = ['w', 'wb', 'a', 'ab', 'r+', 'w+', 'a+', 'rb+', 'wb+', 'ab+']
+SupportModes = Literal['r', 'rb', 'w', 'wb', 'a', 'ab', 'r+', 'w+', 'a+', 'rb+', 'wb+', 'ab+']
 
 class StorageLocation(metaclass=abc.ABCMeta):
 
@@ -28,6 +30,8 @@ class StorageLocation(metaclass=abc.ABCMeta):
     @classmethod
     def __subclasshook__(cls, subclass):
         return hasattr(subclass, 'absolute_path') and isinstance(subclass.absolute_path, property)\
+            and hasattr(subclass, 'm_time') and isinstance(subclass.m_time, property)\
+            and hasattr(subclass, 'size') and isinstance(subclass.size, property)\
             and hasattr(subclass, 'name') and isinstance(subclass.name, property) \
                 and subclass.name.fset is not None\
             and hasattr(subclass, 'storage_type') and isinstance(subclass.storage_type, property)\
@@ -44,13 +48,25 @@ class StorageLocation(metaclass=abc.ABCMeta):
             and hasattr(subclass, 'touch') and callable(subclass.touch)\
             and hasattr(subclass, 'mkdir') and callable(subclass.mkdir)\
             and hasattr(subclass, 'join_loc') and callable(subclass.join_loc)\
-            and hasattr(subclass, 'get_archive_ref') and callable(subclass.get_archive_ref)\
+            and hasattr(subclass, 'sync_locations') and callable(subclass.sync_locations)\
             and hasattr(subclass, 'to_dict') and callable(subclass.to_dict)
 
     @property
     @abc.abstractmethod
     def absolute_path(self) -> Path:
         """Returns path reference of location"""
+        raise NotImplementedError
+
+    @property
+    @abc.abstractmethod
+    def m_time(self) -> float:
+        """Returns modify time float in seconds"""
+        raise NotImplementedError
+
+    @property
+    @abc.abstractmethod
+    def size(self) -> int:
+        """Returns size of file"""
         raise NotImplementedError
 
     @property
@@ -105,7 +121,7 @@ class StorageLocation(metaclass=abc.ABCMeta):
         raise NotImplementedError
 
     @abc.abstractmethod
-    def delete(self, missing_ok: bool=False, recurisve: bool=False,
+    def delete(self, missing_ok: bool=False, recursive: bool=False,
             logger: Logger=_DEFAULT_LOGGER) -> None:
         """Deletes location as directory or file"""
         raise NotImplementedError
@@ -126,7 +142,7 @@ class StorageLocation(metaclass=abc.ABCMeta):
         raise NotImplementedError
 
     @abc.abstractmethod
-    def touch(self, overwrite: bool=False, parents: bool=False) -> None:
+    def touch(self, exist_ok: bool=False, parents: bool=False) -> None:
         """Create file at location"""
         raise NotImplementedError
 
@@ -146,8 +162,9 @@ class StorageLocation(metaclass=abc.ABCMeta):
         raise NotImplementedError
 
     @abc.abstractmethod
-    def get_archive_ref(self) -> Path:
-        """Returns archive reference of file"""
+    def sync_locations(self, src_file: object, use_metadata: bool, full_hashcheck: bool,
+            logger: Logger) -> None:
+        """Syncs locations contents between self and source"""
         raise NotImplementedError
 
     @abc.abstractmethod
