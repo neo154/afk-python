@@ -12,7 +12,6 @@ Class and definitions for how storage is handled for the platform
 import datetime
 import tarfile
 from logging import Logger
-from os import chdir
 from pathlib import Path
 from typing import Dict, List, Union
 
@@ -44,6 +43,31 @@ def _export_entry(entry: StorageLocation) -> Dict:
     :returns: Dictionary of StorageLocation that can be processed for Storage configs
     """
     return {'config_type': entry.storage_type, 'config': entry.to_dict()}
+
+def _add_archive_fileobj(archive_ref: tarfile.TarFile, new_file: StorageLocation,
+        __parent_path: Path=None):
+    """Adds archive to fileobject and recursively if new_file is a directory"""
+    new_name = new_file.name
+    sub_file: StorageLocation
+    if __parent_path is not None:
+        new_name = __parent_path.joinpath(new_name)
+    size_info = new_file.size
+    mtime_info = new_file.m_time
+    tmp_tar_info = tarfile.TarInfo(new_name)
+    tmp_tar_info.size = size_info
+    tmp_tar_info.mtime = mtime_info
+    if new_file.is_file():
+        with new_file.open('rb') as new_ref:
+            archive_ref.addfile(tmp_tar_info, new_ref)
+    elif new_file.is_dir():
+        tmp_tar_info.type = tarfile.DIRTYPE
+        archive_ref.addfile(tmp_tar_info)
+        if __parent_path is None:
+            __parent_path = Path(new_name)
+        else:
+            __parent_path.joinpath(new_name)
+        for sub_file in new_file.iter_location():
+            _add_archive_fileobj(archive_ref, sub_file.name, __parent_path)
 
 class Storage():
     """Storage class that identifies and handles abstracted storage tasks"""
@@ -476,7 +500,6 @@ class Storage():
         if not self.check_archive_files(archive_files=archive_files):
             raise RuntimeError("Not all archive files exist, cannot create archive")
         self.logger.info("Creating archive: %s", archive_loc.name)
-        orig_path = Path.cwd()
         if isinstance(self.tmp_loc, LocalFile):
             tmp_dir = self.tmp_loc.absolute_path
         else:
@@ -487,14 +510,11 @@ class Storage():
         tmp_archive_file = tmp_dir.joinpath(f'{archive_loc.name.split(".")[0]}_tmp.tar.bz2')
         tmp_archive_loc = LocalFile(tmp_archive_file)
         if tmp_archive_file.exists():
-            self.logger.error("Temporary archive file already exists, probable issue")
+            raise FileExistsError("Temporary archive file already exists, probable issue")
         with tarfile.open(tmp_archive_file, 'w|bz2') as new_archive:
             for new_file in archive_files:
                 self.logger.debug("Archive '%s' adding file '%s'", archive_loc.name, new_file.name)
-                tmp_ref = new_file.get_archive_ref()
-                chdir(tmp_ref.parent)
-                new_archive.add(tmp_ref.name, arcname=new_file.name, recursive=True)
-        chdir(orig_path)
+                _add_archive_fileobj(new_archive, new_file)
         tmp_archive_loc.move(archive_loc, logger=self.logger)
         if cleanup:
             self.logger.info("Running cleanup")
