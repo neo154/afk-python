@@ -1,8 +1,8 @@
 """observer_logs.py
 
 Author: neo154
-Version: 0.2.0
-Date Modified: 2023-11-15
+Version: 0.2.1
+Date Modified: 2023-12-03
 
 Parser for log parinsg using re and group extraction
 """
@@ -115,7 +115,8 @@ def analyze_task(logs_df: pd.DataFrame) -> Dict:
     _condition_message = 'CONDITIONS_PASSED'
     _completed_message = 'JOB_COMPLETED'
     _failed_message = 'JOB_FAILED'
-    _end_message = [_completed_message, _failed_message]
+    _terminated_message = 'JOB_TERMINATED'
+    _end_message = [_completed_message, _failed_message, _terminated_message]
     valid_runs = logs_df[ logs_df['uuid'].isin(logs_df[ (logs_df['message']==_condition_message)
         ]['uuid']) ]
     attempted_runs = logs_df['uuid'].unique().size
@@ -123,6 +124,7 @@ def analyze_task(logs_df: pd.DataFrame) -> Dict:
         valid_runs['datetime']==valid_runs['datetime'].max() ]['uuid'])) ]
     success = (latest_run['message']==_completed_message).any()
     failed = (latest_run['message']==_failed_message).any()
+    terminated = (latest_run['message']==_terminated_message).any()
     start_time: pd.Timestamp = latest_run[ latest_run['message']==_start_message ]['datetime'].min()
     end_time: pd.Timestamp = pd.NaT
     runtime = np.nan
@@ -132,7 +134,7 @@ def analyze_task(logs_df: pd.DataFrame) -> Dict:
     succeeded_runs = 0
     error_array = logs_df[ logs_df['log_level']=='ERROR' ]['message'].array
     last_error = pd.NA
-    if success | failed:
+    if success | failed | terminated:
         end_time: pd.Timestamp = latest_run[ latest_run['message'].isin(_end_message) ][
             'datetime'].max()
         runtime = ((end_time - start_time).seconds)/60
@@ -145,6 +147,7 @@ def analyze_task(logs_df: pd.DataFrame) -> Dict:
     if valid_runs.shape[0] > 0:
         failed_runs = (valid_runs['message']==_failed_message).sum()
         succeeded_runs = (valid_runs['message']==_completed_message).sum()
+        terminated_runs = (valid_runs['message']==_terminated_message).sum()
     return {
         'host_id': logs_df['host_id'].unique()[0],
         'run_type': logs_df['run_type'].unique()[0],
@@ -155,6 +158,7 @@ def analyze_task(logs_df: pd.DataFrame) -> Dict:
         'run_time': runtime,
         'attempted_runs': attempted_runs,
         'failed_runs': failed_runs,
+        'terminated_runs': terminated_runs,
         'succeeded_runs': succeeded_runs,
         'warning_count': (logs_df['log_level']=='WARNING').sum(),
         'errors_count': (logs_df['log_level']=='ERROR').sum(),

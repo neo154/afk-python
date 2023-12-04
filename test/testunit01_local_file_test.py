@@ -132,7 +132,7 @@ class TestCase01LocalFiles(unittest.TestCase):
         self.local_dir.mkdir()
         tmp_file.touch()
         assert self.local_dir.is_dir() & tmp_file.exists()
-        self.local_dir.delete()
+        self.local_dir.delete(missing_ok=False, recursive=True)
         assert ~(self.local_dir.exists() | tmp_file.exists())
 
     def test09_move(self):
@@ -146,7 +146,7 @@ class TestCase01LocalFiles(unittest.TestCase):
         assert self.local_dir.exists() & ~self.new_local_dir.exists()
         self.local_dir.move(self.new_local_dir)
         assert ~self.local_dir.exists() & self.new_local_dir.exists()
-        self.new_local_dir.delete()
+        self.new_local_dir.delete(missing_ok=True, recursive=True)
 
     def test10_copy(self):
         """Testing copy functionality"""
@@ -159,7 +159,7 @@ class TestCase01LocalFiles(unittest.TestCase):
         self.local_dir.mkdir()
         self.local_dir.copy(self.new_local_dir)
         assert self.local_dir.is_dir() & self.new_local_dir.is_dir()
-        self.new_local_dir.delete()
+        self.new_local_dir.delete(missing_ok=False, recursive=True)
         tmp_ref: LocalFile = self.local_dir.join_loc('test_file.txt')
         new_tmp_ref: LocalFile = self.new_local_dir.join_loc('test_file.txt')
         self.local_file.copy(tmp_ref)
@@ -170,8 +170,8 @@ class TestCase01LocalFiles(unittest.TestCase):
             & new_tmp_ref.exists() & (expected_string==new_tmp_ref.read())
         self.local_file.delete()
         self.new_local_file.delete()
-        self.local_dir.delete()
-        self.new_local_dir.delete()
+        self.local_dir.delete(missing_ok=False, recursive=True)
+        self.new_local_dir.delete(missing_ok=False, recursive=True)
 
     def test11_rotate(self):
         """Testing rotation functionality"""

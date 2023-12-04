@@ -1,15 +1,18 @@
 """afk_scheduler.py
 
 Author: neo154
-Version: 0.1.1
-Date Modified: 2022-11-25
+Version: 0.1.2
+Date Modified: 2022-12-03
 
 For running the scheudler for tasks and tasks
 """
 
+import os
+import sys
 from datetime import datetime, timedelta
 from json import loads
 from logging import INFO
+from pathlib import Path
 from threading import Lock, Thread
 from typing import Any, Callable, Dict, List, Union
 from uuid import uuid4
@@ -18,6 +21,9 @@ from observer.storage import Storage
 from observer.storage.models import StorageLocation
 from observer.task import BaseTask
 from observer.task_runner import Runner, _TaskLikeType
+from observer.utils.update_funcs import (_UpdateDict, git_update,
+                                         pip_requirements_txt,
+                                         pip_single_package, run_updates)
 
 
 def _calculate_first_run(min_interval: int=None, h_interval: int=None,
@@ -188,6 +194,7 @@ class JobScheduler(Runner):
         self.__server_thread = None
         self.__sched_running = False
         self.__sched_task_lock = Lock()
+        self.__update_funcs: _UpdateDict = {}
 
     @property
     def job_schedule(self) -> List[Dict]:
@@ -202,6 +209,11 @@ class JobScheduler(Runner):
                 ret_l.append({'uuid': item['uuid'], 'task_id': item['task_id'],
                     'kwargs': item['kwargs']})
             return ret_l
+
+    @property
+    def component_updates(self) -> List[str]:
+        """Lists all components that are setup to update"""
+        return list(self.__update_funcs.keys())
 
     def __check_new_tasks(self) -> None:
         """Checks for new tasks entries"""
@@ -334,11 +346,66 @@ class JobScheduler(Runner):
                         inactive_task['schedule']['h_interval'])
                 self.__scheduled_tasks.append(inactive_task)
 
-    def shutdown(self):
+    def shutdown(self, force: bool=False):
         if self.__sched_running:
             self.__sched_running = False
             self.__server_thread.join()
         with self.__sched_task_lock:
             self.__scheduled_tasks_inactive = self.__scheduled_tasks
             self.__scheduled_tasks = []
-        return super().shutdown()
+        return super().shutdown(force)
+
+    def add_git_update(self, component_name: str, git_path: Path=None, branch: str='main',
+            git_bin:Path=None, force: bool=True) -> None:
+        """
+        Sets update to be run and adds it to list of updates
+        """
+        if component_name in self.__update_funcs:
+            raise ValueError(f"Provided component {component_name} is already setup")
+        self.__update_funcs[component_name] = (git_update, {'branch': branch, 'force': force,
+            'git_path': git_path, 'git_bin': git_bin})
+
+    def add_pip_package_install(self, component_name: str, package_name: str, pip_path: Path=None,
+            upgrade: bool=False, version: str=None, trusted_hosts: List[str]=None) -> None:
+        """
+        Installs and can upgrade a single package
+        """
+        if component_name in self.__update_funcs:
+            raise ValueError(f"Provided component {component_name} is already setup")
+        self.__update_funcs[component_name] = (pip_single_package, {'package_name': package_name,
+            'version': version, 'upgrade': upgrade, 'trusted_hosts': trusted_hosts,
+            'pip_bin': pip_path})
+
+    def add_pip_requirements_install(self, component_name: str, requirements_path: Path,
+            pip_path: Path=None, trusted_hosts: List[str]=None) -> None:
+        """
+        Installs and can upgrade a single package
+        """
+        if component_name in self.__update_funcs:
+            raise ValueError(f"Provided component {component_name} is already setup")
+        self.__update_funcs[component_name] = (pip_requirements_txt, {
+            'requirements_path': requirements_path, 'trusted_hosts': trusted_hosts,
+            'pip_bin': pip_path})
+
+    def ready_update(self, scheduled_time: datetime, restart: bool=True, force: bool=False) -> None:
+        """
+        Schedules update listings, this action is blocking
+        """
+        while True:
+            if datetime.now() <= scheduled_time:
+                run_updates(self.__update_funcs, self.logger)
+                break
+        if restart:
+            self.restart_system(scheduled_time, force)
+
+    def restart_system(self, scheduled_time: datetime, force: bool=False) -> None:
+        """
+        Restarts whole system, this action is blocking
+        """
+        while True:
+            if datetime.now() <= scheduled_time:
+                break
+        if self.__is_running:
+            # Run any other clean up here
+            self.shutdown(force)
+        os.execv(sys.executable, ['python', sys.argv])

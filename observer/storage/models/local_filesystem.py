@@ -2,8 +2,8 @@
 """local_filesystem.py
 
 Author: neo154
-Version: 0.2.1
-Date Modified: 2023-11-25
+Version: 0.2.2
+Date Modified: 2023-12-03
 
 Defines interactions and local filesystem objects
 this will alow for abstraction at storage level for just using and
@@ -218,13 +218,21 @@ class LocalFile(StorageLocation):
         """
         Deletes local file
 
+        :param missing_ok: Boolean for whether or not to accept the file not existing already
+        :param recursive: Boolean of whether or not to recusively delete or
+        :param logger: Logger object for logging
         :returns: None
         """
         logger.info("Deleting file reference: '%s'", self.absolute_path)
         if recursive:
             _recurse_delete(self.absolute_path, missing_ok)
         else:
-            self.absolute_path.unlink(missing_ok)
+            if self.absolute_path.is_dir():
+                if list(self.absolute_path.iterdir()):
+                    raise ValueError("Cannot remove a directory with out it being recursive")
+                self.absolute_path.rmdir()
+            else:
+                self.absolute_path.unlink(missing_ok)
         self.__stat_info = None
 
     def move(self, other_loc: StorageLocation, logger: Logger=_DEFAULT_LOGGER) -> None:

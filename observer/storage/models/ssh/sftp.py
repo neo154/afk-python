@@ -1,8 +1,8 @@
 """sftp.py
 
 Author: neo154
-Version: 0.1.0
-Date Modified: 2023-11-25
+Version: 0.1.1
+Date Modified: 2023-12-03
 
 Module that is primarily intended to contain all sftp actions for remote server files
 that can be retrieved via paramiko/ssh
@@ -266,22 +266,28 @@ class SFTPConnection():
             return file_ref.close()
 
     def delete_path(self, path: ValidPathArgs, recursive: bool=False,
-            not_exist_ok: bool=False) -> None:
+            missing_ok: bool=False) -> None:
         """
         Deletes file or dir on remote filesystem
 
         :param path: Pathlik object to delete from remote filesystem
         :param recursive: Boolean of whether or not to recusively delete or
-        :param not_exist_ok: Boolean whether or not to accept file not existing
+        :param missing_ok: Boolean whether or not to accept file not existing
         :returns: None
         """
         self.__check_closed()
         path = confirm_path_arg(path)
-        if not _sftp_exists(self.__sftp_client, path) and not_exist_ok:
+        if not _sftp_exists(self.__sftp_client, path) and missing_ok:
             raise FileNotFoundError("Not able to removed a file that already doesn't exist")
         if recursive:
             return _recruse_del(self.__sftp_client, path)
-        return self.__sftp_client.unlink(str(path))
+        path_str = str(path)
+        tmp_stat = self.__sftp_client.stat(path_str)
+        if S_ISDIR(tmp_stat.st_mode):
+            if self.__sftp_client.listdir(path_str):
+                raise ValueError("Cannot remove a directory with out it being recursive")
+            return self.__sftp_client.rmdir(path_str)
+        return self.__sftp_client.unlink(path_str)
 
     def readinto(self, source_path: ValidPathArgs, dest_fo: FileIO, binary_mode: bool=False) -> int:
         """
