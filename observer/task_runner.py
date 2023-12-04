@@ -2,8 +2,8 @@
 """task_runner.py
 
 Author: neo154
-Version: 0.2.0
-Date Modified: 2023-11-15
+Version: 0.2.1
+Date Modified: 2023-12-03
 
 Module for BaseRunner that is responsible for taking a collection of Jobs, Tasks, and functions
 to be run, and converts them all to tasks. Then takes the tasks nad sets them all up with their
@@ -58,6 +58,7 @@ class Runner():
         self.__task_mutex_refs: Dict[str, StorageLocation] = {}
         self.__current_runnings: _RunningTaskProcess = {}
         self.__max_instances = max_instances
+        self.__graceful_kill = False
         self.formatter = logging.Formatter(
             "%(asctime)s %(host_id)s %(run_type)s %(task_type)s %(task_name)s %(uuid)s "
                 + "'%(pathname)s' LINENO:%(lineno)d %(levelname)s: %(message)s",
@@ -323,7 +324,8 @@ class Runner():
                 remove_entries = []
                 # Go through and evaluate exits if they are done
                 for name, task in self.__current_runnings.items():
-                    if not task.is_alive():
+                    task_alive = task.is_alive()
+                    if not task_alive:
                         task.join()
                         if task.exitcode != 0:
                             task.logger.critical("JOB_FAILED")
@@ -333,6 +335,17 @@ class Runner():
                                 mutex_ref.delete(logger=task.logger)
                             task.logger.info("JOB_COMPLETED")
                         # Have to add name for reference removal later
+                        remove_entries.append(name)
+                        task.close()
+                    elif task_alive and self.__graceful_kill:
+                        task.logger.warning("Force shutdown triggered, terminating job")
+                        task.terminate()
+                        task.join()
+                        task.close()
+                        if name in self.__task_mutex_refs:
+                            mutex_ref = self.__task_mutex_refs.pop(name)
+                            mutex_ref.delete(logger=task.logger)
+                        task.logger.info("JOB_TERMINATED")
                         remove_entries.append(name)
                 # Remove stale references
                 for entry in remove_entries:
@@ -361,7 +374,7 @@ class Runner():
             self._task_run_thread.start()
             self._task_eval_thread.start()
 
-    def shutdown(self):
+    def shutdown(self, force: bool=False):
         """
         Used to gracefully stop and join the server threads and join all queue listeners
 
@@ -371,6 +384,7 @@ class Runner():
             self.__is_running = False
             self._task_run_thread.join()
             self.logger.info("Job runner server shutdown")
+            self.__graceful_kill = force
             self._task_eval_thread.join()
             self.logger.info("Eval server shutdown")
             final_listener = None
