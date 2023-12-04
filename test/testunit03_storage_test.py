@@ -216,7 +216,7 @@ class TestCase01StorageTesting(unittest.TestCase):
         self.storage.mutex_loc.mkdir(True)
         old_loc = self.storage.mutex_loc
         new_loc: LocalFile = self.storage.base_loc.join_loc('mutex')
-        new_loc.touch(True)
+        new_loc.mkdir(True)
         self.storage.mutex_loc = new_loc
         assert old_loc.exists() & new_loc.exists()
         assert self.storage.mutex_loc!=old_loc and self.storage.mutex_loc==new_loc
@@ -226,7 +226,6 @@ class TestCase01StorageTesting(unittest.TestCase):
             f'{self.storage.report_date_str}.mutex')
         assert self.storage.mutex==mutex_loc
         self.storage.mutex_loc = old_loc
-        mutex_loc.delete()
 
     def test17_archive_creation(self):
         """Test archive creation"""

@@ -121,7 +121,7 @@ class TestCase01RemoteConnector(unittest.TestCase):
             assert not test_conn.path_exists('/config/test_dir_recurse/yes/hi_there.txt')
             test_conn.touch_file("/config/test_dir_recurse/yes/hi_there.txt")
             assert test_conn.path_exists("/config/test_dir_recurse/yes/hi_there.txt")
-            test_conn.delete_path("/config/test_dir_recurse")
+            test_conn.delete_path("/config/test_dir_recurse", True, False)
             assert not test_conn.path_exists('/config/test_dir_recurse/yes/hi_there.txt')
             assert not test_conn.path_exists('/config/test_dir_recurse')
 
@@ -142,7 +142,7 @@ class TestCase01RemoteConnector(unittest.TestCase):
                 test_conn.touch_file(f'/config/test_dir_recurse/yes/{file_ref}')
             for new_file in test_conn.iterdir('/config/test_dir_recurse/yes'):
                 assert new_file in files
-            test_conn.delete_path('/config/test_dir_recurse/yes')
+            test_conn.delete_path('/config/test_dir_recurse/yes', True, False)
 
 @unittest.skipIf(not _HAS_DOCKER, "Docker wasn't found, won't run the test")
 class TestCase02RemoteFiles(unittest.TestCase):
@@ -255,7 +255,7 @@ class TestCase02RemoteFiles(unittest.TestCase):
         self.remote_dir.mkdir()
         tmp_file.touch()
         assert self.remote_dir.is_dir() & tmp_file.exists()
-        self.remote_dir.delete()
+        self.remote_dir.delete(False, True)
         assert ~(self.remote_dir.exists() | tmp_file.exists())
 
     def test09_move(self):
@@ -295,8 +295,8 @@ class TestCase02RemoteFiles(unittest.TestCase):
             & new_tmp_ref.exists() & (expected_string==new_tmp_ref.read())
         self.remote_file.delete()
         self.new_remote_file.delete()
-        self.remote_dir.delete()
-        self.new_remote_dir.delete()
+        self.remote_dir.delete(False, True)
+        self.new_remote_dir.delete(False, True)
 
     def test11_rotate(self):
         """Testing rotation functionality"""

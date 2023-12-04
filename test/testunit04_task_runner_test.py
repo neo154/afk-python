@@ -222,5 +222,28 @@ class Test04CaseTaskRunnerTesting(unittest.TestCase):
         assert not assumed_left_over_mutex.exists()
         self.test_runner.shutdown()
 
+    def test10_emergency_backout(self) -> None:
+        """Testing ability to shutdown and kill would be zombie processes"""
+        base_log_loc = LocalFile(self.log_path)
+        if self.test_runner.is_running:
+            self.test_runner.shutdown()
+        self.clear_used_files()
+        self.test_runner.start()
+        self.test_runner.add_tasks(self.test_runner.generate_task_instance(TestingTask1(
+            sleep_timer=60, storage_config=self.storage_config)))
+        sleep(5)
+        self.test_runner.shutdown(True)
+        test_task_logs = base_log_loc.join_loc('testing_task_type1.log')
+        assert test_task_logs.exists()
+        test_task_logs_df = logs_2_df(test_task_logs)
+        assert test_task_logs_df.shape[0] > 0
+        assert 'JOB_TERMINATED' in test_task_logs_df['message'].tolist()
+        analyzed_df = analyze_logs(test_task_logs_df)
+        assert (analyzed_df[ analyzed_df['task_name']=='testing_task_name1' ]['last_message']\
+            =='JOB_TERMINATED').all()
+        assert analyzed_df['failed_runs'].sum()==0
+        assert analyzed_df['terminated_runs'].sum()==1
+        assert analyzed_df['succeeded_runs'].sum()==0
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
