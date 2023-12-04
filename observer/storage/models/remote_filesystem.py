@@ -2,8 +2,8 @@
 """remote_filesystem.py
 
 Author: neo154
-Version: 0.2.1
-Date Modified: 2023-11-25
+Version: 0.2.2
+Date Modified: 2023-12-03
 
 Defines interactions and remote filesystem objects
 this will alow for abstraction at storage level for just using and
@@ -28,20 +28,6 @@ from observer.storage.utils import (ValidPathArgs, confirm_path_arg,
 
 _DEFAULT_LOGGER = generate_logger(__name__)
 
-def _recurse_delete(path: Path) -> None:
-    """
-    Protected delete function that deletes the actual files and directories
-
-    :param path: Pathlike object that will be deleted
-    :returns: None
-    """
-    if path.is_file():
-        path.unlink()
-        return
-    if path.is_dir():
-        for sub_p in path.iterdir():
-            _recurse_delete(sub_p)
-        path.rmdir()
 
 def _recurse_copy(sftp_conn: SFTPConnection, src_path: Path, dest_loc: StorageLocation) -> None:
     """
@@ -271,7 +257,6 @@ class RemoteFile(StorageLocation):
         else:
             self.__absolute_path = tmp_path
         self.name = self.absolute_path.name
-        self._tmp_file_ref: Path = None
         self.__file_stat = None
         self.__resync = False
         _ = self.exists
@@ -283,12 +268,6 @@ class RemoteFile(StorageLocation):
     def __eq__(self, __o: StorageLocation) -> bool:
         return isinstance(__o, RemoteFile) & (self.absolute_path==__o.absolute_path) \
             & (self.host_id==__o.host_id)
-
-    def __del__(self):
-        """Destructor for object, checks for tmp_file and if it exists, removes it"""
-        if self._tmp_file_ref is not None:
-            if self._tmp_file_ref.exists():
-                _recurse_delete(self._tmp_file_ref)
 
     def __update_stat_info(self, sftp_conn: SFTPConnection) -> None:
         """
@@ -468,12 +447,13 @@ class RemoteFile(StorageLocation):
         Deletes local file
 
         :param missing_ok: Boolean for whether or not to accept the file not existing already
+        :param recursive: Boolean of whether or not to recusively delete or
         :param logger: Logger object for logging
         :returns: None
         """
         with self.__ssh_interface.open() as sftp_conn:
             logger.info("Deleting file reference: '%s'", self.absolute_path)
-            sftp_conn.delete_path(self.absolute_path, missing_ok)
+            sftp_conn.delete_path(self.absolute_path, recursive=recursive, missing_ok=missing_ok)
             self.__file_stat = None
 
     def move(self, other_loc: StorageLocation, logger: Logger=_DEFAULT_LOGGER) -> None:
