@@ -2,8 +2,8 @@
 """remote_filesystem.py
 
 Author: neo154
-Version: 0.2.2
-Date Modified: 2023-12-03
+Version: 0.2.3
+Date Modified: 2023-12-24
 
 Defines interactions and remote filesystem objects
 this will alow for abstraction at storage level for just using and
@@ -19,7 +19,7 @@ from typing import (Any, Callable, Dict, Generator, Iterable, List, Literal,
 
 from paramiko import SFTPFile
 
-from observer.observer_logging import generate_logger
+from observer.afk_logging import generate_logger
 from observer.storage.models.ssh.sftp import RemoteConnector, SFTPConnection
 from observer.storage.models.storage_location import (StorageLocation,
                                                       SupportModes, WriteModes)
@@ -349,7 +349,7 @@ class RemoteFile(StorageLocation):
     @property
     def m_time(self) -> Union[float, None]:
         """
-        Parent of the current LocalFile reference
+        Last modification time of the file
 
         :returns: LocalFile object of parent reference
         """
@@ -358,6 +358,19 @@ class RemoteFile(StorageLocation):
         if self.__file_stat is None:
             return None
         return self.__file_stat.st_mtime
+
+    @property
+    def a_time(self) -> Union[float, None]:
+        """
+        Last access time of the file
+
+        :returns: LocalFile object of parent reference
+        """
+        if self.__resync:
+            _ = self.exists()
+        if self.__file_stat is None:
+            return None
+        return self.__file_stat.st_atime
 
     def exists(self) -> bool:
         """

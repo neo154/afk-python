@@ -2,8 +2,8 @@
 """storage.py
 
 Author: neo154
-Version: 0.2.0
-Date Modified: 2023-04-29
+Version: 0.2.1
+Date Modified: 2023-12-24
 
 
 Class and definitions for how storage is handled for the platform
@@ -15,7 +15,7 @@ from logging import Logger
 from pathlib import Path
 from typing import Dict, List, Union
 
-from observer.observer_logging import generate_logger
+from observer.afk_logging import generate_logger
 from observer.storage.models import (LocalFile, SSHInterfaceCollection,
                                      StorageLocation,
                                      generate_storage_location)
@@ -171,7 +171,7 @@ class Storage():
         :returns: None
         """
         tmp_ref = _check_storage_arg(new_loc)
-        self.logger.info("Setting base loc to: %s", tmp_ref)
+        self.__logger.info("Setting base loc to: %s", tmp_ref)
         self.__base_loc = tmp_ref
 
     @property
@@ -194,7 +194,7 @@ class Storage():
         :returns: None
         """
         tmp_ref = _check_storage_arg(new_loc)
-        self.logger.info("Setting data loc to: %s", tmp_ref)
+        self.__logger.info("Setting data loc to: %s", tmp_ref)
         self.__data_loc = tmp_ref.join_loc(f'data_{self.report_date_str}')
 
     @property
@@ -211,7 +211,7 @@ class Storage():
         :returns: None
         """
         tmp_ref = _check_storage_arg(new_loc)
-        self.logger.info("Setting tmp loc to: %s", tmp_ref)
+        self.__logger.info("Setting tmp loc to: %s", tmp_ref)
         self.__tmp_loc = new_loc
 
     @property
@@ -229,7 +229,7 @@ class Storage():
         :returns: None
         """
         tmp_ref =  _check_storage_arg(new_loc)
-        self.logger.info("Setting report loc to: %s", tmp_ref)
+        self.__logger.info("Setting report loc to: %s", tmp_ref)
         self.__report_loc = tmp_ref.join_loc(f'report_{self.report_date_str}')
 
     @property
@@ -247,7 +247,7 @@ class Storage():
         :returns: None
         """
         tmp_ref = _check_storage_arg(new_loc)
-        self.logger.info("Setting archive loc to: %s", tmp_ref)
+        self.__logger.info("Setting archive loc to: %s", tmp_ref)
         self._archive_loc =tmp_ref.join_loc(f'archive_{self.report_date_str}')
         if self.__archive_file is not None:
             self.archive_file = self.__get_stem_prefix(self.archive_file)
@@ -266,7 +266,7 @@ class Storage():
         :returns: None
         """
         tmp_ref = self.gen_archivefile_ref(archive_name)
-        self.logger.info("Setting archive file reference to: %s", tmp_ref)
+        self.__logger.info("Setting archive file reference to: %s", tmp_ref)
         self.__archive_file = tmp_ref
 
     @property
@@ -283,7 +283,7 @@ class Storage():
         :returns: None
         """
         tmp_ref = _check_storage_arg(new_loc)
-        self.logger.info("Setting mutex loc to: %s", tmp_ref)
+        self.__logger.info("Setting mutex loc to: %s", tmp_ref)
         self.__mutex_loc = tmp_ref
         if self.mutex is not None:
             self.mutex = self.__get_stem_prefix(self.mutex)
@@ -302,7 +302,7 @@ class Storage():
         :returns: None
         """
         tmp_ref = self.mutex_loc.join_loc(f'{name_prefix}_{self.report_date_str}.mutex')
-        self.logger.info("Setting mutex reference to: %s", tmp_ref)
+        self.__logger.info("Setting mutex reference to: %s", tmp_ref)
         self.__mutex_file = tmp_ref
 
     @property
@@ -329,19 +329,23 @@ class Storage():
         """Setter for logger"""
         self.__logger = new_logger
 
-    def gen_datafile_ref(self, file_name: str) -> StorageLocation:
+    def gen_datafile_ref(self, file_name: str, parents: bool=True) -> StorageLocation:
         """
         Creates and returns datafile reference
         """
         f_split = file_name.split('.')
+        if not self.data_loc.exists() and parents:
+            self.data_loc.mkdir()
         return self.data_loc.join_loc(f"{f_split[0]}_{self.report_date_str}"\
             f".{'.'.join(f_split[1:])}")
 
-    def gen_archivefile_ref(self, file_name: str) -> StorageLocation:
+    def gen_archivefile_ref(self, file_name: str, parents: bool=True) -> StorageLocation:
         """
         Creates and returns archive file reference
         """
         f_split = file_name.split('.')
+        if not self.archive_loc.exists() and parents:
+            self.archive_loc.mkdir()
         return self.archive_loc.join_loc(f"{f_split[0]}_{self.report_date_str}"\
             f".{'.'.join(f_split[1:])}")
 
@@ -366,9 +370,9 @@ class Storage():
     def __check_storage_loc(self, loc: StorageLocation) -> None:
         """Helper to look for loc and if doesn't exist then it is created"""
         if loc.exists():
-            self.logger.debug("Storage location found: %s", loc)
+            self.__logger.debug("Storage location found: %s", loc)
             return
-        self.logger.info("Location not found: %s", loc)
+        self.__logger.info("Location not found: %s", loc)
         loc.create_loc(parents=True)
 
     def __check_storage_group(self, stor_list: List[StorageLocation],
@@ -379,7 +383,7 @@ class Storage():
     def __add_to_group(self, stor_list: List[StorageLocation], new_loc: StorageLocation):
         """Helper to add a storage location entry to the list if it is not already there"""
         if self.__check_storage_group(stor_list=stor_list, stor_obj=new_loc):
-            self.logger.warning("This location is already attached to this group, cannot add")
+            self.__logger.warning("This location is already attached to this group, cannot add")
         else:
             stor_list.append(new_loc)
 
@@ -388,7 +392,7 @@ class Storage():
         """Helper to remove storage location entry from a list"""
         index = self.__search_storage_group(stor_list=stor_list, stor_obj=bye_loc)
         if index == -1:
-            self.logger.warning(
+            self.__logger.warning(
                 "Cannot delete storage location with UUID: '%s' not in group", bye_loc
             )
         else:
@@ -409,7 +413,7 @@ class Storage():
         :param new_loc: StorageLocation based object to add to archive list
         :returns: None
         """
-        self.logger.debug("Adding '%s' to archive list", new_loc.name)
+        self.__logger.debug("Adding '%s' to archive list", new_loc.name)
         self.__add_to_group(stor_list=self.archive_files, new_loc=new_loc)
 
     def delete_from_archive_list(self, old_loc: StorageLocation) -> None:
@@ -419,7 +423,7 @@ class Storage():
         :param old_loc: Storage location to be removed from archive list
         :returns: None
         """
-        self.logger.debug("Removing '%s' from archive list", old_loc.name)
+        self.__logger.debug("Removing '%s' from archive list", old_loc.name)
         self.__delete_from_group(self.__archive_files, old_loc)
 
     def list_required_files(self) -> None:
@@ -433,7 +437,7 @@ class Storage():
         :param new_loc: StorageLocation based object to add to required list
         :returns: None
         """
-        self.logger.debug("Adding '%s' to required list", new_loc.name)
+        self.__logger.debug("Adding '%s' to required list", new_loc.name)
         self.__add_to_group(stor_list=self.__required_files, new_loc=new_loc)
 
     def delete_from_required_list(self, old_loc: StorageLocation) -> None:
@@ -443,7 +447,7 @@ class Storage():
         :param old_loc: Storage location to be removed from required list
         :returns: None
         """
-        self.logger.debug("Removing '%s' from required list", old_loc.name)
+        self.__logger.debug("Removing '%s' from required list", old_loc.name)
         self.__delete_from_group(self.__required_files, old_loc)
 
     def list_halt_files(self) -> None:
@@ -457,7 +461,7 @@ class Storage():
         :param new_loc: StorageLocation based object to add to halting list
         :returns: None
         """
-        self.logger.debug("Adding '%s' to halt list", new_loc.name)
+        self.__logger.debug("Adding '%s' to halt list", new_loc.name)
         self.__add_to_group(stor_list=self.__halt_files, new_loc=new_loc)
 
     def delete_from_halt_list(self, old_loc: StorageLocation) -> None:
@@ -467,7 +471,7 @@ class Storage():
         :param old_loc: Storage location to be removed from required list
         :returns: None
         """
-        self.logger.debug("Removing '%s' from halt list", old_loc.name)
+        self.__logger.debug("Removing '%s' from halt list", old_loc.name)
         self.__delete_from_group(self.__halt_files, old_loc)
 
     def rotate_location(self, locs: Union[StorageLocation, List[StorageLocation]]) -> None:
@@ -480,7 +484,7 @@ class Storage():
         if not isinstance(locs, list):
             locs = [locs]
         for item in locs:
-            item.rotate(logger=self.logger)
+            item.rotate(logger=self.__logger)
 
     def create_archive(self, archive_files: List[StorageLocation]=None,
             archive_loc: StorageLocation=None, cleanup: bool=False) -> None:
@@ -499,7 +503,7 @@ class Storage():
             archive_loc = self.archive_file
         if not self.check_archive_files(archive_files=archive_files):
             raise RuntimeError("Not all archive files exist, cannot create archive")
-        self.logger.info("Creating archive: %s", archive_loc.name)
+        self.__logger.info("Creating archive: %s", archive_loc.name)
         if isinstance(self.tmp_loc, LocalFile):
             tmp_dir = self.tmp_loc.absolute_path
         else:
@@ -513,13 +517,13 @@ class Storage():
             raise FileExistsError("Temporary archive file already exists, probable issue")
         with tarfile.open(tmp_archive_file, 'w|bz2') as new_archive:
             for new_file in archive_files:
-                self.logger.debug("Archive '%s' adding file '%s'", archive_loc.name, new_file.name)
+                self.__logger.debug("Archive '%s' adding file '%s'", archive_loc.name, new_file.name)
                 _add_archive_fileobj(new_archive, new_file)
-        tmp_archive_loc.move(archive_loc, logger=self.logger)
+        tmp_archive_loc.move(archive_loc, logger=self.__logger)
         if cleanup:
-            self.logger.info("Running cleanup")
+            self.__logger.info("Running cleanup")
             for new_file in archive_files:
-                new_file.delete(logger=self.logger)
+                new_file.delete(logger=self.__logger)
 
     def create_mutex(self) -> None:
         """
@@ -527,7 +531,7 @@ class Storage():
 
         :returns: None
         """
-        self.logger.info("Creating mutex")
+        self.__logger.info("Creating mutex")
         self.mutex.create()
 
     def cleanup_mutex(self) -> None:
@@ -536,8 +540,8 @@ class Storage():
 
         :returns: None
         """
-        self.logger.info("Cleaning up mutex file")
-        self.mutex.delete(logger=self.logger)
+        self.__logger.info("Cleaning up mutex file")
+        self.mutex.delete(logger=self.__logger)
 
     def check_archive_files(self, archive_files: List[StorageLocation]=None) -> bool:
         """
@@ -561,10 +565,10 @@ class Storage():
         passes = True
         for required_file in self.__required_files:
             if not required_file.exists():
-                self.logger.warning("Required file not found: %s", required_file)
+                self.__logger.warning("Required file not found: %s", required_file)
                 passes = False
             else:
-                self.logger.debug("Required file was found: %s", required_file)
+                self.__logger.debug("Required file was found: %s", required_file)
         return passes
 
     def check_required_locations(self) -> None:
@@ -574,14 +578,14 @@ class Storage():
 
         :returns: None
         """
-        self.logger.info("Running checks and adjustments for job environment")
+        self.__logger.info("Running checks and adjustments for job environment")
         self.__check_storage_loc(self.base_loc)
         self.__check_storage_loc(self.data_loc)
         self.__check_storage_loc(self.tmp_loc)
         self.__check_storage_loc(self.report_loc)
         self.__check_storage_loc(self.archive_loc)
         self.__check_storage_loc(self.mutex_loc)
-        self.logger.info("Environment setup")
+        self.__logger.info("Environment setup")
 
     def to_dict(self, full_export: bool=False) -> Dict:
         """

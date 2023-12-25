@@ -1,8 +1,8 @@
 """storage_location.py
 
 Author: neo154
-Version: 0.1.1
-Date Modified: 2023-11-25
+Version: 0.1.2
+Date Modified: 2023-12-24
 
 Module that defines the interface for storage locations and which methods they are required to
 implement
@@ -14,7 +14,7 @@ from logging import Logger
 from pathlib import Path
 from typing import Any, Dict, Generator, Literal, Union
 
-from observer.observer_logging import generate_logger
+from observer.afk_logging import generate_logger
 
 _DEFAULT_LOGGER = generate_logger(__name__)
 
@@ -31,6 +31,7 @@ class StorageLocation(metaclass=abc.ABCMeta):
     def __subclasshook__(cls, subclass):
         return hasattr(subclass, 'absolute_path') and isinstance(subclass.absolute_path, property)\
             and hasattr(subclass, 'm_time') and isinstance(subclass.m_time, property)\
+            and hasattr(subclass, 'a_time') and isinstance(subclass.a_time, property)\
             and hasattr(subclass, 'size') and isinstance(subclass.size, property)\
             and hasattr(subclass, 'name') and isinstance(subclass.name, property) \
                 and subclass.name.fset is not None\
@@ -61,6 +62,12 @@ class StorageLocation(metaclass=abc.ABCMeta):
     @abc.abstractmethod
     def m_time(self) -> float:
         """Returns modify time float in seconds"""
+        raise NotImplementedError
+
+    @property
+    @abc.abstractmethod
+    def a_time(self) -> float:
+        """Returns access time float in seconds"""
         raise NotImplementedError
 
     @property

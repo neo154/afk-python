@@ -1,8 +1,8 @@
 """observer_logs.py
 
 Author: neo154
-Version: 0.2.1
-Date Modified: 2023-12-03
+Version: 0.2.2
+Date Modified: 2023-12-04
 
 Parser for log parinsg using re and group extraction
 """
@@ -132,6 +132,7 @@ def analyze_task(logs_df: pd.DataFrame) -> Dict:
     last_run_message = pd.NA
     failed_runs = 0
     succeeded_runs = 0
+    terminated_runs = 0
     error_array = logs_df[ logs_df['log_level']=='ERROR' ]['message'].array
     last_error = pd.NA
     if success | failed | terminated:

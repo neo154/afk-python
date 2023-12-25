@@ -2,8 +2,8 @@
 """local_filesystem.py
 
 Author: neo154
-Version: 0.2.2
-Date Modified: 2023-12-03
+Version: 0.2.3
+Date Modified: 2023-12-24
 
 Defines interactions and local filesystem objects
 this will alow for abstraction at storage level for just using and
@@ -16,7 +16,7 @@ from pathlib import Path
 from shutil import copy2, copytree
 from typing import Dict, Generator, Literal, Union
 
-from observer.observer_logging import generate_logger
+from observer.afk_logging import generate_logger
 from observer.storage.models.storage_location import (StorageLocation,
                                                       SupportModes, WriteModes)
 from observer.storage.utils import (ValidPathArgs, confirm_path_arg,
@@ -136,7 +136,7 @@ class LocalFile(StorageLocation):
     @property
     def m_time(self) -> Union[float, None]:
         """
-        Parent of the current LocalFile reference
+        Last modification time of the file
 
         :returns: LocalFile object of parent reference
         """
@@ -144,6 +144,18 @@ class LocalFile(StorageLocation):
         if self.__stat_info is None:
             return None
         return self.__stat_info.st_mtime
+
+    @property
+    def a_time(self) -> Union[float, None]:
+        """
+        Last access time of the file
+
+        :returns: LocalFile object of parent reference
+        """
+        self.__check_status()
+        if self.__stat_info is None:
+            return None
+        return self.__stat_info.st_atime
 
     def exists(self) -> bool:
         """
