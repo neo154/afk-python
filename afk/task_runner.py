@@ -21,11 +21,11 @@ from time import sleep
 from typing import Callable, Dict, List, Tuple, Type, Union
 from uuid import uuid4
 
-from observer.logging_helpers import get_local_log_file
-from observer.storage import Storage
-from observer.storage.models import StorageLocation
-from observer.task import BaseTask
-from observer.task_process import TaskProcess
+from afk.logging_helpers import get_local_log_file
+from afk.storage import Storage
+from afk.storage.models import StorageLocation
+from afk.task import BaseTask
+from afk.task_process import TaskProcess
 
 HOSTNAME=gethostname()
 

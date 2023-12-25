@@ -16,7 +16,7 @@ from socket import gethostname
 from typing import Any, Callable, Iterable, Mapping
 from uuid import uuid4
 
-from observer.task import BaseTask
+from afk.task import BaseTask
 
 HOSTNAME=gethostname()
 

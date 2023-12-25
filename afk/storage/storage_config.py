@@ -10,7 +10,7 @@ Storage configuration dictionary declaration
 
 from typing import Dict, List, Union
 
-from observer.storage.models.storage_models import StorageItem, StorageLocation
+from afk.storage.models.storage_models import StorageItem, StorageLocation
 
 
 def _check_item(item: Union[dict, StorageLocation]) -> StorageLocation:

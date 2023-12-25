@@ -14,7 +14,7 @@ from typing import Dict, Iterator, List, Mapping, Union
 import numpy as np
 import pandas as pd
 
-from observer.storage.models import StorageLocation
+from afk.storage.models import StorageLocation
 
 _DATETIME_PATTERN = r'(?P<datetime>[0-9]{4}-[0-1][0-9]-[0-3][0-9] [0-2][0-9]:[0-5][0-9]:[0-5][0-9])'
 _HOST_PATTERN = r'(?P<host_id>[0-9\.\-\_a-zA-Z]+)'

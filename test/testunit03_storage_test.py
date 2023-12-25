@@ -6,14 +6,14 @@ import tarfile
 import unittest
 from pathlib import Path
 
-from observer.storage.archive import ArchiveFile
-from observer.storage.models import StorageLocation
-from observer.storage.models.local_filesystem import LocalFile
-from observer.storage.models.remote_filesystem import RemoteFile
-from observer.storage.models.storage_models import generate_ssh_interface
-from observer.storage.storage import Storage
-
 from test_libraries.junktext import LOREMIPSUM_PARAGRAPH
+
+from afk.storage.archive import ArchiveFile
+from afk.storage.models import StorageLocation
+from afk.storage.models.local_filesystem import LocalFile
+from afk.storage.models.remote_filesystem import RemoteFile
+from afk.storage.models.storage_models import generate_ssh_interface
+from afk.storage.storage import Storage
 
 _BASE_LOC = Path(__file__).parent.joinpath('tmp')
 
@@ -334,17 +334,6 @@ class TestCase01ArchiveFileTesting(unittest.TestCase):
             tmp_ref.write(LOREMIPSUM_PARAGRAPH)
         with cls.file5.open('w') as tmp_ref:
             tmp_ref.write("Another test text")
-        priv_key = Path(__file__).parent\
-            .joinpath('docker_files/test_id_rsa').absolute()
-        pub_key = Path(__file__).parent\
-            .joinpath('docker_files/test_id_rsa.pub').absolute()
-        if _HAS_DOCKER:
-            cls._docker_ref = DockerImage(priv_key, pub_key)
-            cls._docker_ref.start()
-            cls.ssh_interface = generate_ssh_interface(priv_key, 'localhost', 'test_user',
-                port=2222)
-            cls.local_file = LocalFile(_BASE_LOC.joinpath('test.txt'))
-            cls.remote_ref = RemoteFile(Path('/config/test2.txt'), cls.ssh_interface)
         return super().setUpClass()
 
     @classmethod
@@ -357,9 +346,6 @@ class TestCase01ArchiveFileTesting(unittest.TestCase):
         cls.file5.delete(recursive=True)
         cls.dir1.delete(recursive=True)
         cls.dir2.delete(recursive=True)
-        if _HAS_DOCKER:
-            cls._docker_ref.stop()
-            cls._docker_ref.delete()
         return super().tearDownClass()
 
     def test01_basic_creation(self):

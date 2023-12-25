@@ -10,17 +10,17 @@ Basic testing the logging for
 
 import unittest
 from pathlib import Path
-from test_libraries.test_tasks import (TestingTask1, TestingTask2,
-                                            TestingTask3, TestingTask4,
-                                            TestingTask5, testing_type)
 from time import sleep
 
 import pandas as pd
+from test_libraries.test_tasks import (TestingTask1, TestingTask2,
+                                       TestingTask3, TestingTask4,
+                                       TestingTask5, testing_type)
 
-from observer.storage import Storage
-from observer.storage.models.storage_models import LocalFile
-from observer.task_runner import Runner
-from observer.utils.parsers.observer_logs import analyze_logs, logs_2_df
+from afk.storage import Storage
+from afk.storage.models.storage_models import LocalFile
+from afk.task_runner import Runner
+from afk.utils.parsers.observer_logs import analyze_logs, logs_2_df
 
 _BASE_LOC = Path(__file__).parent.parent
 

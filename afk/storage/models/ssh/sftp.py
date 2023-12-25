@@ -15,7 +15,7 @@ from typing import Callable, List, Literal, Union
 
 import paramiko
 
-from observer.storage.utils import ValidPathArgs, confirm_path_arg
+from afk.storage.utils import ValidPathArgs, confirm_path_arg
 
 _ConnectionCallback = Callable[[None], None]
 

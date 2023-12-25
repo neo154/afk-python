@@ -4,7 +4,8 @@
 from time import sleep
 from typing import Dict
 
-from observer.task import BaseTask
+from afk.task import BaseTask
+
 
 class TestingTask1(BaseTask):
     """Testing object for testing some basic setup"""

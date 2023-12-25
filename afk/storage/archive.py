@@ -14,8 +14,8 @@ from logging import Logger
 from pathlib import Path
 from typing import List, Literal, Union
 
-from observer.observer_logging import generate_logger
-from observer.storage.models import StorageLocation
+from afk.afk_logging import generate_logger
+from afk.storage.models import StorageLocation
 
 _SupportedCompression = Literal['gz', 'bz2', 'xz']
 _CompressionSuffixes = ['gz', 'bz2', 'lzma']
@@ -76,7 +76,6 @@ def _handle_tar_add(tar_ref: tarfile.TarFile, list_ref: List[str], new_file: Sto
         c_time_ns = new_file.m_time
         a_time_ns = new_file.a_time
         tarinfo.mtime = int(m_time_ns * 10000000) * 100
-        tarinfo.atime = int(a_time_ns * 10000000) * 100
         tarinfo.size = stat_size
         tarinfo.pax_headers = {
             "atime": f'{a_time_ns}',

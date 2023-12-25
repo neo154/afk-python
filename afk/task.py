@@ -17,8 +17,8 @@ from multiprocessing import Queue
 from traceback import format_tb
 from typing import Any, Iterable, Mapping, Union
 
-from observer.storage import Storage
-from observer.storage.storage_config import StorageConfig
+from afk.storage import Storage
+from afk.storage.storage_config import StorageConfig
 
 _defaultLogger = logging.getLogger(__name__)
 

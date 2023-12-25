@@ -10,7 +10,7 @@ Init file for logging_helpers, pulls required references
 
 from logging import FileHandler
 
-from observer.storage.models import StorageLocation
+from afk.storage.models import StorageLocation
 
 
 def get_local_log_file(task_type: str,

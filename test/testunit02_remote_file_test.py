@@ -6,15 +6,16 @@ from pathlib import Path
 from stat import S_ISDIR, S_ISREG
 
 from test_libraries.junktext import (LOREMIPSUM_PARAGRAPH,
-                                          LOREMIPSUM_PARAGRAPH_DIFF)
-from observer.storage.models.storage_models import (RemoteConnector,
-                                                    generate_ssh_interface)
-from observer.storage.utils.rsync import raw_hash_check
+                                     LOREMIPSUM_PARAGRAPH_DIFF)
+
+from afk.storage.models.storage_models import (RemoteConnector,
+                                               generate_ssh_interface)
+from afk.storage.utils.rsync import raw_hash_check
 
 try:
     from test_libraries.docker_image import DockerImage
 
-    from observer.storage.models import LocalFile, RemoteFile
+    from afk.storage.models import LocalFile, RemoteFile
     _HAS_DOCKER = True
 except ImportError:
     _HAS_DOCKER = False

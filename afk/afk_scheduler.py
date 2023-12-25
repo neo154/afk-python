@@ -17,13 +17,13 @@ from threading import Lock, Thread
 from typing import Any, Callable, Dict, List, Union
 from uuid import uuid4
 
-from observer.storage import Storage
-from observer.storage.models import StorageLocation
-from observer.task import BaseTask
-from observer.task_runner import Runner, _TaskLikeType
-from observer.utils.update_funcs import (_UpdateDict, git_update,
-                                         pip_requirements_txt,
-                                         pip_single_package, run_updates)
+from afk.storage import Storage
+from afk.storage.models import StorageLocation
+from afk.task import BaseTask
+from afk.task_runner import Runner, _TaskLikeType
+from afk.utils.update_funcs import (_UpdateDict, git_update,
+                                    pip_requirements_txt, pip_single_package,
+                                    run_updates)
 
 
 def _calculate_first_run(min_interval: int=None, h_interval: int=None,

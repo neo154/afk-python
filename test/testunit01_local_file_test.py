@@ -1,9 +1,9 @@
 """Tests for local filesystem objects
 """
 
+import sys
 import unittest
 from pathlib import Path
-import sys
 
 _BASE_LOC = Path(__file__).parent.joinpath('tmp')
 
@@ -11,9 +11,12 @@ _LIB_BASE = Path(__file__).absolute().parent.parent
 if str(_LIB_BASE) not in sys.path:
     sys.path.insert(1, str(_LIB_BASE))
 
-from observer.storage.models import LocalFile
-from observer.storage.utils.rsync import raw_hash_check
-from test_libraries.junktext import LOREMIPSUM_PARAGRAPH, LOREMIPSUM_PARAGRAPH_DIFF
+from test_libraries.junktext import (LOREMIPSUM_PARAGRAPH,
+                                     LOREMIPSUM_PARAGRAPH_DIFF)
+
+from afk.storage.models import LocalFile
+from afk.storage.utils.rsync import raw_hash_check
+
 
 def recurse_delete(path: Path):
     """Recursive deletion"""

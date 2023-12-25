@@ -12,10 +12,10 @@ and required for observer storage
 from pathlib import Path
 from typing import Dict, List, Literal, Union
 
-from observer.storage.models.local_filesystem import LocalFile
-from observer.storage.models.remote_filesystem import RemoteFile
-from observer.storage.models.ssh.sftp import RemoteConnector
-from observer.storage.models.storage_location import StorageLocation
+from afk.storage.models.local_filesystem import LocalFile
+from afk.storage.models.remote_filesystem import RemoteFile
+from afk.storage.models.ssh.sftp import RemoteConnector
+from afk.storage.models.storage_location import StorageLocation
 
 
 class StorageItem(dict):

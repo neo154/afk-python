@@ -14,7 +14,7 @@ from xml.dom.minidom import Document, Element, Node
 from defusedxml import minidom
 from pandas import to_datetime
 
-from observer.storage.models.storage_models import StorageLocation
+from afk.storage.models.storage_models import StorageLocation
 
 
 class XMLMappingError(Exception):

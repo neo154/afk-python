@@ -15,11 +15,11 @@ from logging import Logger
 from pathlib import Path
 from typing import Dict, List, Union
 
-from observer.afk_logging import generate_logger
-from observer.storage.models import (LocalFile, SSHInterfaceCollection,
+from afk.afk_logging import generate_logger
+from afk.storage.models import (LocalFile, SSHInterfaceCollection,
                                      StorageLocation,
                                      generate_storage_location)
-from observer.storage.storage_config import StorageConfig
+from afk.storage.storage_config import StorageConfig
 
 _DEFAULT_LOGGER = generate_logger(__name__)
 
@@ -335,7 +335,7 @@ class Storage():
         """
         f_split = file_name.split('.')
         if not self.data_loc.exists() and parents:
-            self.data_loc.mkdir()
+            self.data_loc.mkdir(True)
         return self.data_loc.join_loc(f"{f_split[0]}_{self.report_date_str}"\
             f".{'.'.join(f_split[1:])}")
 
@@ -345,7 +345,7 @@ class Storage():
         """
         f_split = file_name.split('.')
         if not self.archive_loc.exists() and parents:
-            self.archive_loc.mkdir()
+            self.archive_loc.mkdir(True)
         return self.archive_loc.join_loc(f"{f_split[0]}_{self.report_date_str}"\
             f".{'.'.join(f_split[1:])}")
 

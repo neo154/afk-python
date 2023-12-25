@@ -10,7 +10,7 @@ For managing and organizing any other common operation and types for storage bas
 from pathlib import Path
 from typing import Union
 
-from observer.storage.utils.rsync import raw_hash_check, sync_files
+from afk.storage.utils.rsync import raw_hash_check, sync_files
 
 ValidPathArgs = Union[str, Path]
 

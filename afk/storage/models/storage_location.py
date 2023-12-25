@@ -14,7 +14,7 @@ from logging import Logger
 from pathlib import Path
 from typing import Any, Dict, Generator, Literal, Union
 
-from observer.afk_logging import generate_logger
+from afk.afk_logging import generate_logger
 
 _DEFAULT_LOGGER = generate_logger(__name__)
 

@@ -19,12 +19,12 @@ from typing import (Any, Callable, Dict, Generator, Iterable, List, Literal,
 
 from paramiko import SFTPFile
 
-from observer.afk_logging import generate_logger
-from observer.storage.models.ssh.sftp import RemoteConnector, SFTPConnection
-from observer.storage.models.storage_location import (StorageLocation,
-                                                      SupportModes, WriteModes)
-from observer.storage.utils import (ValidPathArgs, confirm_path_arg,
-                                    raw_hash_check, sync_files)
+from afk.afk_logging import generate_logger
+from afk.storage.models.ssh.sftp import RemoteConnector, SFTPConnection
+from afk.storage.models.storage_location import (StorageLocation, SupportModes,
+                                                 WriteModes)
+from afk.storage.utils import (ValidPathArgs, confirm_path_arg, raw_hash_check,
+                               sync_files)
 
 _DEFAULT_LOGGER = generate_logger(__name__)
 

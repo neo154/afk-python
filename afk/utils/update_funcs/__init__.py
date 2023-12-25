@@ -14,7 +14,7 @@ from shutil import which
 from subprocess import CompletedProcess, run
 from typing import Any, Callable, Dict, List, Literal, Tuple
 
-from observer.afk_logging import generate_logger
+from afk.afk_logging import generate_logger
 
 _DEFAULT_LOGGER = generate_logger(__name__)
 
