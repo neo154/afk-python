@@ -9,7 +9,7 @@ from typing import List
 
 import pandas as pd
 
-from test.test_libraries.test_tasks import (TestingTask1, TestingTask2,
+from test_libraries.test_tasks import (TestingTask1, TestingTask2,
                                             TestingTask3)
 from observer.afk_scheduler import JobScheduler
 from observer.storage.models import LocalFile

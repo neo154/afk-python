@@ -10,7 +10,7 @@ Basic testing the logging for
 
 import unittest
 from pathlib import Path
-from test.test_libraries.test_tasks import (TestingTask1, TestingTask2,
+from test_libraries.test_tasks import (TestingTask1, TestingTask2,
                                             TestingTask3, TestingTask4,
                                             TestingTask5, testing_type)
 from time import sleep
@@ -193,7 +193,7 @@ class Test04CaseTaskRunnerTesting(unittest.TestCase):
             =='JOB_FAILED').all()
         assert analyzed_df['succeeded_runs'].sum()==6
         assert analyzed_df['errors_count'].sum()==1
-        assert analyzed_df['warning_count'].sum()==3
+        assert analyzed_df['warning_count'].sum()==5
         assert analyzed_df[ analyzed_df['task_name']=='testing_task_name5' ]['errors_count']\
             .sum()==1
         assert analyzed_df[ analyzed_df['task_name']=='testing_task_name3' ]['warning_count']\
@@ -244,6 +244,22 @@ class Test04CaseTaskRunnerTesting(unittest.TestCase):
         assert analyzed_df['failed_runs'].sum()==0
         assert analyzed_df['terminated_runs'].sum()==1
         assert analyzed_df['succeeded_runs'].sum()==0
+
+    def test11_error_traceback(self) -> None:
+        """Testing error traceback error message with stack trace"""
+        base_log_loc = LocalFile(self.log_path)
+        if self.test_runner.is_running:
+            self.test_runner.shutdown()
+        self.clear_used_files()
+        self.test_runner.start()
+        self.test_runner.add_tasks(self.test_runner.generate_task_instance(TestingTask2(
+            storage_config=self.storage_config, throw_error=True)))
+        sleep(5)
+        test_task_logs = base_log_loc.join_loc('testing_task_type1.log')
+        assert test_task_logs.exists()
+        test_task_logs_df = logs_2_df(test_task_logs)
+        analyzed_df = analyze_logs(test_task_logs_df)
+        assert analyzed_df['warning_count'].sum()==2
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

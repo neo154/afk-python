@@ -13,7 +13,7 @@ if str(_LIB_BASE) not in sys.path:
 
 from observer.storage.models import LocalFile
 from observer.storage.utils.rsync import raw_hash_check
-from test.test_libraries.junktext import LOREMIPSUM_PARAGRAPH, LOREMIPSUM_PARAGRAPH_DIFF
+from test_libraries.junktext import LOREMIPSUM_PARAGRAPH, LOREMIPSUM_PARAGRAPH_DIFF
 
 def recurse_delete(path: Path):
     """Recursive deletion"""
