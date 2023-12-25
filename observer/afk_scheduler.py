@@ -1,8 +1,8 @@
 """afk_scheduler.py
 
 Author: neo154
-Version: 0.1.2
-Date Modified: 2022-12-03
+Version: 0.1.3
+Date Modified: 2022-12-24
 
 For running the scheudler for tasks and tasks
 """
@@ -359,37 +359,63 @@ class JobScheduler(Runner):
             git_bin:Path=None, force: bool=True) -> None:
         """
         Sets update to be run and adds it to list of updates
+
+        :param component_name: String name of the component to be upgraded via git
+        :param git_path: Path identifying where git project for updating is found
+        :param branch: String identifying branch to use for the update
+        :param git_bin: Path identifying where git binary is located
+        :param force: Boolean indicating whether to force change branch for update if necessary
+        :returns: None
         """
         if component_name in self.__update_funcs:
             raise ValueError(f"Provided component {component_name} is already setup")
         self.__update_funcs[component_name] = (git_update, {'branch': branch, 'force': force,
             'git_path': git_path, 'git_bin': git_bin})
 
-    def add_pip_package_install(self, component_name: str, package_name: str, pip_path: Path=None,
+    def add_pip_package_install(self, component_name: str, package_name: str, pip_bin: Path=None,
             upgrade: bool=False, version: str=None, trusted_hosts: List[str]=None) -> None:
         """
         Installs and can upgrade a single package
+
+        :param component_name: String name of the component to be upgraded via git
+        :param package_name: Name of package in PYPI or other repository is stored
+        :param pip_bin: Path identifying where to find pip binary
+        :param upgrade: Boolean indicating if this is basic install or is an upgrade
+        :param version: String identifying version of package to install
+        :param trusted_hosts: List of strings identifying URLs of trusted hosts for instalation
+        :returns: None
         """
         if component_name in self.__update_funcs:
             raise ValueError(f"Provided component {component_name} is already setup")
         self.__update_funcs[component_name] = (pip_single_package, {'package_name': package_name,
             'version': version, 'upgrade': upgrade, 'trusted_hosts': trusted_hosts,
-            'pip_bin': pip_path})
+            'pip_bin': pip_bin})
 
     def add_pip_requirements_install(self, component_name: str, requirements_path: Path,
-            pip_path: Path=None, trusted_hosts: List[str]=None) -> None:
+            pip_bin: Path=None, trusted_hosts: List[str]=None) -> None:
         """
-        Installs and can upgrade a single package
+        Installs and can upgrade multiple packages via requirements.txt file
+
+        :param component_name: String name of the component to be upgraded via git
+        :param requirements_path: Path idenitifying where requirements file is stored
+        :param pip_bin: Path identifying where to find pip binary
+        :param trusted_hosts: List of strings identifying URLs of trusted hosts for instalation
+        :returns: None
         """
         if component_name in self.__update_funcs:
             raise ValueError(f"Provided component {component_name} is already setup")
         self.__update_funcs[component_name] = (pip_requirements_txt, {
             'requirements_path': requirements_path, 'trusted_hosts': trusted_hosts,
-            'pip_bin': pip_path})
+            'pip_bin': pip_bin})
 
     def ready_update(self, scheduled_time: datetime, restart: bool=True, force: bool=False) -> None:
         """
         Schedules update listings, this action is blocking
+
+        :param scheduled_time: Datetime of when any loaded update commands will be executed
+        :param restart: Boolean indicating if restart is executed after updates run
+        :param force: Boolean indicating if we are for restarting, killing all related processes
+        :returns: None
         """
         while True:
             if datetime.now() <= scheduled_time:
@@ -401,6 +427,10 @@ class JobScheduler(Runner):
     def restart_system(self, scheduled_time: datetime, force: bool=False) -> None:
         """
         Restarts whole system, this action is blocking
+
+        :param schedule_time: Datetime of when a restart is scheduled to execute
+        :param force: Boolean indicating if we are for restarting, killing all related processes
+        :returns: None
         """
         while True:
             if datetime.now() <= scheduled_time:

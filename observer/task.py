@@ -2,8 +2,8 @@
 """task.py
 
 Author: neo154
-Version: 0.2.0
-Date Modified: 2023-11-15
+Version: 0.2.1
+Date Modified: 2023-12-04
 
 Module that describes a singular task that is to be, this is the basic structure singular tasks
 that will utilize things like storage modules and other basic utilities
@@ -14,6 +14,7 @@ import logging
 import sys
 from logging.handlers import QueueHandler
 from multiprocessing import Queue
+from traceback import format_tb
 from typing import Any, Iterable, Mapping, Union
 
 from observer.storage import Storage
@@ -205,6 +206,8 @@ class BaseTask():
         try:
             self.main(*args, **kwargs)
         except Exception as excep:          # pylint: disable=broad-except
+            for tb_line in format_tb(excep.__traceback__):
+                self.logger.warning(tb_line.strip().replace('\n', ' '))
             self.logger.error("%s", excep)
             _exit_code(self.__interactive, 1)
 
