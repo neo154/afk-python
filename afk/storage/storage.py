@@ -2,8 +2,8 @@
 """storage.py
 
 Author: neo154
-Version: 0.2.1
-Date Modified: 2023-12-24
+Version: 0.2.2
+Date Modified: 2023-12-29
 
 
 Class and definitions for how storage is handled for the platform
@@ -329,9 +329,27 @@ class Storage():
         """Setter for logger"""
         self.__logger = new_logger
 
+    def setup_primary_locs(self) -> None:
+        """
+        Setsups up the primary required location for storage interactions, default directories
+        for data, archive, tmprorary interactions, mutexes, etc.
+
+        :returns: None
+        """
+        self.data_loc.parent.mkdir(parents=True)
+        self.archive_loc.parent.mkdir(parents=True)
+        self.report_loc.parent.mkdir(parents=True)
+        self.tmp_loc.mkdir(parents=True)
+        self.mutex_loc.mkdir(parents=True)
+
     def gen_datafile_ref(self, file_name: str, parents: bool=True) -> StorageLocation:
         """
-        Creates and returns datafile reference
+        Creates and returns datafile reference for the daily data
+        Example: data/data_2023_03_15/<file_name>_2023_03_15.<file_name.suffixes>
+
+        :param file_name: String of file name to generate a daily datafile reference
+        :param parents: Boolean to create daily directory if it doesn't already exist
+        :returns: StorageLocation of file in a daily data directory
         """
         f_split = file_name.split('.')
         if not self.data_loc.exists() and parents:
@@ -341,7 +359,12 @@ class Storage():
 
     def gen_archivefile_ref(self, file_name: str, parents: bool=True) -> StorageLocation:
         """
-        Creates and returns archive file reference
+        Creates and returns archive file reference for the daily archive
+        Example: archive/archive_2023_03_15/<file_name>_2023_03_15.<file_name.suffixes>
+
+        :param file_name: String of file name to generate a daily archive file reference
+        :param parents: Boolean to create daily directory if it doesn't already exist
+        :returns: StorageLocation of file in a daily data directory
         """
         f_split = file_name.split('.')
         if not self.archive_loc.exists() and parents:
@@ -349,11 +372,34 @@ class Storage():
         return self.archive_loc.join_loc(f"{f_split[0]}_{self.report_date_str}"\
             f".{'.'.join(f_split[1:])}")
 
-    def gen_tmpfile_ref(self, file_name: StopIteration) -> StorageLocation:
+    def gen_reportfile_ref(self, file_name: str, parents: bool=True) -> StorageLocation:
+        """
+        Creates and returns report file reference for the daily reporting directory
+        Example: reports/reports_2023_03_15/<file_name>_2023_03_15.<file_name.suffixes>
+
+        :param file_name: String of file name to generate a daily archive file reference
+        :param parents: Boolean to create daily directory if it doesn't already exist
+        :returns: StorageLocation of file in a daily data directory
+        """
+        f_split = file_name.split('.')
+        if not self.report_loc.exists() and parents:
+            self.report_loc.mkdir(True)
+        return self.report_loc.join_loc(f"{f_split[0]}_{self.report_date_str}"\
+            f".{'.'.join(f_split[1:])}")
+
+    def gen_tmpfile_ref(self, file_name: str, add_date: bool=True) -> StorageLocation:
         """
         Creates and returns tmp file reference
+
+        :param file_name: String name of file reference to create at tmp location
+        :param add_date: Boolean whether to append date to filename before suffixes, default true
+        :returns: StorageLocation of temporary file that was created
         """
-        return self.tmp_loc.join_loc(file_name)
+        if not add_date:
+            return self.tmp_loc.join_loc(file_name)
+        f_split = file_name.split('.')
+        return self.tmp_loc.join_loc(f"{f_split[0]}_{self.report_date_str}"\
+            f".{'.'.join(f_split[1:])}")
 
     def __get_stem_prefix(self, loc: StorageLocation) -> None:
         """Pulls location name and gets the prefix for location regeneration"""
@@ -517,7 +563,8 @@ class Storage():
             raise FileExistsError("Temporary archive file already exists, probable issue")
         with tarfile.open(tmp_archive_file, 'w|bz2') as new_archive:
             for new_file in archive_files:
-                self.__logger.debug("Archive '%s' adding file '%s'", archive_loc.name, new_file.name)
+                self.__logger.debug("Archive '%s' adding file '%s'", archive_loc.name,
+                    new_file.name)
                 _add_archive_fileobj(new_archive, new_file)
         tmp_archive_loc.move(archive_loc, logger=self.__logger)
         if cleanup:
@@ -590,6 +637,8 @@ class Storage():
     def to_dict(self, full_export: bool=False) -> Dict:
         """
         Transforms all storage locations etc into processable storage locations
+
+        :returns: Dictionary of all required info to recreate Storage object
         """
         ret_dict =  {
             'base_loc': _export_entry(self.base_loc),
