@@ -1,20 +1,23 @@
 """xml.py
 
 Author: neo154
-Version: 0.1.1
-Date Modified: 2022-11-15
+Version: 0.1.2
+Date Modified: 2022-12-26
 
 Parser for XML parsing using the defused XML library and a few custom make parsers
 """
 
 from logging import Logger
-from typing import Any, Dict, List, Literal, Union
+from typing import Any, List, Literal, Union
 from xml.dom.minidom import Document, Element, Node
 
 from defusedxml import minidom
 from pandas import to_datetime
 
+from afk.afk_logging import generate_logger
 from afk.storage.models.storage_models import StorageLocation
+
+_DEFAULT_LOGGER = generate_logger(__name__)
 
 
 class XMLMappingError(Exception):
@@ -46,7 +49,7 @@ class XMLMapping(dict):
 
     def __init__(self, xpath:str, name:str,
             parse_type: Literal['str', 'int', 'float', 'datetime', 'bool', 'list']='str',
-            attribute_name: str=None, sub_elem_tag_name: str=None, datetime_fmt: str=None,
+            attribute_name: str=None, sub_elem_x_path: str=None, datetime_fmt: str=None,
             utc:bool=False, true_vals: List[str]=None) -> None:
         super().__init__()
         self['xpath'] = xpath                   # Path to node with particular name
@@ -63,9 +66,9 @@ class XMLMapping(dict):
                 raise XMLMappingError('Bool type but no identifiers for true values given')
             self['true_vals'] = true_vals
         elif parse_type == 'list':
-            if sub_elem_tag_name is None:
+            if sub_elem_x_path is None:
                 raise XMLMappingError(xpath, 'List type but no sub elements identifier for list')
-            self['sub_elem_tag_name'] = sub_elem_tag_name
+            self['sub_elem_x_path'] = sub_elem_x_path
         if attribute_name is not None:
             self['attribute_name'] = attribute_name
 
@@ -73,7 +76,7 @@ class XMLMapper(dict):
     """Full set of mappers for XML parsing"""
 
     def __init__(self, xpath:str, data_points:Union[List[dict], List[XMLMapping]], \
-            child_record:dict=None):
+            child_record:dict=None, child_xpath: str=None):
         super().__init__()
         self['xpath'] = xpath
         if len(data_points) <= 0:
@@ -93,13 +96,15 @@ class XMLMapper(dict):
             tmp_l.append({'name': data_point['name'], 'map': tmp_dict})
         self['data_points'] = tmp_l
         if child_record is not None:
+            if child_xpath is None:
+                raise XMLMappingError("Child record path not identified")
             self['child_record'] = XMLMapper(**child_record)
+            self['child_xpath'] = child_xpath
         # Self check to make sure there aren't multiple instances of samme name
         curr_ref = self
         full_nameset = []
         while True:
             for data_point in curr_ref['data_points']:
-
                 if data_point['name'] in full_nameset:
                     raise RuntimeError(
                         "XMLMapper invalid, repeated name in final datastructure: "
@@ -141,7 +146,8 @@ def get_children_by_tag(current_node: Element, tag: str) -> List[Node]:
     return [ node for node in current_node.childNodes \
                 if (isinstance(node, Element) and node.nodeName==tag) ]
 
-def traverse_xpath(start_node: Element, xpath: str, logger: Logger=None) -> Union[Element, None]:
+def traverse_xpath(start_node: Element, xpath: str,
+        logger: Logger=_DEFAULT_LOGGER) -> Union[Element, None]:
     """
     Going from node reference that is identified and gives a reference to element using
     xpath to traverse the node structure
@@ -151,6 +157,8 @@ def traverse_xpath(start_node: Element, xpath: str, logger: Logger=None) -> Unio
     :param logger: Logger object to use if one is provided
     :returns: Element in path or None object
     """
+    if start_node is None:
+        raise XMLParsingError("Cannot traverse node, given node is None")
     not_warned = True
     cur_ref = start_node
     if xpath  in ['.', start_node.nodeName]:
@@ -161,7 +169,7 @@ def traverse_xpath(start_node: Element, xpath: str, logger: Logger=None) -> Unio
         child_nodes = get_children_by_tag(cur_ref, next_node)
         if len(child_nodes) <= 0:
             return None
-        if len(child_nodes) > 1 and not_warned and logger is not None:
+        if len(child_nodes) > 1 and not_warned:
             logger.warning(
                 "MORE THAN ONE NODE WAS FOUND WITH TAG %s, PICKED FIRST ENTRY!", next_node)
             not_warned = False
@@ -182,6 +190,28 @@ def _handle_none_data(mapping: dict) -> Any:
         return False
     if data_type=='list':
         return []
+    return None
+
+def _get_listlike_data(list_elem: Element, sub_elem_xpath: str) -> List:
+    """Getter for list like data elements"""
+    ret_list = []
+    path_node_names = _xpath_split(sub_elem_xpath)
+    node_l = [list_elem]
+    while len(path_node_names) > 0:
+        new_list = []
+        next_node = path_node_names.pop(0)
+        for node in node_l:
+            new_list += get_children_by_tag(node, next_node)
+        node_l = new_list
+    for final_elem in node_l:
+        item = ''
+        if final_elem.firstChild is not None:
+            item = final_elem.firstChild.data
+        else:
+            if len(final_elem.childNodes) > 0:
+                item = final_elem.childNodes[0].data
+        ret_list.append(item)
+    return list(set(ret_list))
 
 def parse_item(current_ref: Element, mapping: dict) -> Any:
     """
@@ -198,54 +228,32 @@ def parse_item(current_ref: Element, mapping: dict) -> Any:
     if 'attribute_name' in mapping:
         raw_data = data_node.getAttribute(mapping['attribute_name'])
     else:
+        if data_node.firstChild is None:
+            return _handle_none_data(mapping)
         if data_type != 'list':
-            print(data_node.firstChild.data)
             raw_data = data_node.firstChild.data.strip()
-            print(raw_data)
         else:
-            raw_data = []
-            for sub_elem in data_node.getElementsByTagName(mapping['sub_elem_tag_name']):
-                if sub_elem.firstChild is not None:
-                    raw_data.append(sub_elem.firstChild.data)
-            return raw_data
+            return _get_listlike_data(data_node, mapping['sub_elem_xpath'])
     if raw_data is None:
         return_data = _handle_none_data(mapping)
     if data_type == 'str':
         return_data = raw_data
-    if data_type == 'int':
+    elif data_type == 'int':
         return_data = int(raw_data)
-    if data_type == 'float':
+    elif data_type == 'float':
         return_data = float(raw_data)
-    if data_type == 'datetime':
+    elif data_type == 'datetime':
+        if raw_data == "N/A":
+            return _handle_none_data(mapping)
         return_data = to_datetime(raw_data, format=mapping['datetime_fmt'], utc=mapping['utc'])
-    if data_type == 'bool':
+    elif data_type == 'bool':
         return_data = raw_data in mapping['true_vals']
+    else:
+        raise ValueError(f"Uknown type provided: {data_type}")
     return return_data
 
-def _parse_xml_record(start_elem: Element, mapper: XMLMapper, logger: Logger=None,
-        parent_data: dict=None) -> Dict:
-    """
-    Parses single XML record from an element, recursive if mapper is
-
-    :param start_elem: Element that contains datapoint data that is going to be parsed out
-    :param mapper: Mapper object that describes how to parse a record from XML
-    :param parent_data: If child record, pass rest of data from level up
-    :returns: Dictionary record with data and names
-    """
-    if parent_data is not None:
-        ret_dict = parent_data
-    else:
-        ret_dict = {}
-    record_elem = traverse_xpath(start_elem, mapper['xpath'], logger)
-    for data_point_map in mapper['data_points']:
-        ret_dict[data_point_map['name']] = parse_item(record_elem, data_point_map['map'])
-    print(ret_dict)
-    if 'child_record' in mapper:
-        ret_dict = _parse_xml_record(record_elem, mapper['child_record'], logger, ret_dict)
-    return ret_dict
-
 def parse_xml_records(elems: Union[List[Element], Element], mapper: XMLMapper,
-        logger: Logger=None, parent_data: dict=None):
+        logger: Logger=_DEFAULT_LOGGER, parent_data: dict=None):
     """
     Parses single XML record from an element, recursive if mapper is
 
@@ -255,7 +263,25 @@ def parse_xml_records(elems: Union[List[Element], Element], mapper: XMLMapper,
     :param parent_data: If child record, pass rest of data from level up
     :returns: Dictionary record with data and names
     """
-    return [ _parse_xml_record(elem, mapper, logger, parent_data) for elem in elems ]
+    ret_l = []
+    if parent_data is None:
+        parent_data = {}
+    if not isinstance(elems, list):
+        elems = [elems]
+    for elem in elems:
+        record_ref = traverse_xpath(elem, mapper['xpath'], logger)
+        tmp_record = {**parent_data}
+        for data_point_map in mapper['data_points']:
+            tmp_record[data_point_map['name']] = parse_item(record_ref, data_point_map['map'])
+        if 'child_record' in mapper:
+            child_xpath = _xpath_split(mapper['child_xpath'])
+            child_rec = traverse_xpath(record_ref, '/'.join(child_xpath[:-1]))
+            if child_rec is not None:
+                ret_l += parse_xml_records(get_children_by_tag(child_rec, child_xpath[-1]),
+                    mapper['child_record'], logger, tmp_record)
+        else:
+            ret_l.append(tmp_record)
+    return ret_l
 
 def load_xml_data(xml_doc: Union[str, StorageLocation], logger: Logger=None) -> Document:
     """
