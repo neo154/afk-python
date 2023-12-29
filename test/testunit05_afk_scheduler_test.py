@@ -2,20 +2,18 @@
 """
 
 import unittest
-from pathlib import Path
 from datetime import datetime, timedelta
+from pathlib import Path
 from time import sleep
 from typing import List
 
 import pandas as pd
+from test_libraries.test_tasks import TestingTask1, TestingTask2, TestingTask3
 
-from test.test_libraries.test_tasks import (TestingTask1, TestingTask2,
-                                            TestingTask3)
-from observer.afk_scheduler import JobScheduler
-from observer.storage.models import LocalFile
-from observer.storage import Storage
-from observer.utils.parsers.observer_logs import logs_2_df
-
+from afk.afk_scheduler import JobScheduler
+from afk.storage import Storage
+from afk.storage.models import LocalFile
+from afk.utils.parsers.observer_logs import logs_2_df
 
 _BASE_LOC = Path(__file__).parent.parent
 

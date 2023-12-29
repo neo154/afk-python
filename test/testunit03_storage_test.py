@@ -6,21 +6,20 @@ import tarfile
 import unittest
 from pathlib import Path
 
-from observer.storage.models.local_filesystem import \
-    LocalFile  # pylint: disable=wrong-import-position
-from observer.storage.models.remote_filesystem import \
-    RemoteFile  # pylint: disable=wrong-import-position
-from observer.storage.models.storage_models import \
-    generate_ssh_interface  # pylint: disable=wrong-import-position
-from observer.storage.storage import \
-    Storage  # pylint: disable=wrong-import-position
+from test_libraries.junktext import LOREMIPSUM_PARAGRAPH
+
+from afk.storage.archive import ArchiveFile
+from afk.storage.models import StorageLocation
+from afk.storage.models.local_filesystem import LocalFile
+from afk.storage.models.remote_filesystem import RemoteFile
+from afk.storage.models.storage_models import generate_ssh_interface
+from afk.storage.storage import Storage
 
 _BASE_LOC = Path(__file__).parent.joinpath('tmp')
 
 try:
-    from test.test_libraries.docker_image import DockerImage
-
     from docker.errors import DockerException  # pylint: disable=unused-import
+    from test_libraries.docker_image import DockerImage
     _HAS_DOCKER = True
 except ImportError:
     _HAS_DOCKER = False
@@ -302,6 +301,128 @@ class TestCase01StorageTesting(unittest.TestCase):
             'ssh_interfaces': []}
         assert exported_config == expected_config
         Storage(storage_config=exported_config)
+
+
+class TestCase02ArchiveFileTesting(unittest.TestCase):
+    """ArchiveFile testing with local and """
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.storage = Storage(storage_config={
+            'base_loc': {
+                'config_type': 'local_filesystem',
+                'config': { 'path_ref': _BASE_LOC }
+            }
+        })
+        cls.name_text = 'lorem_ipsum'
+        cls.file1: LocalFile = cls.storage.tmp_loc.join_loc(f"{cls.name_text}.txt")
+        cls.file2: LocalFile = cls.storage.tmp_loc.join_loc('lorem_ipsum2.txt')
+        cls.dir1: LocalFile = cls.storage.tmp_loc.join_loc('test_dir')
+        cls.dir2: LocalFile = cls.dir1.join_loc('sub_test_dir')
+        cls.file3: LocalFile = cls.dir1.join_loc('test.txt')
+        cls.file4: LocalFile = cls.dir2.join_loc('lorem_ipsum3.txt')
+        cls.file5: LocalFile = cls.dir2.join_loc('another_test.txt')
+        with cls.file1.open('w') as tmp_ref:
+            tmp_ref.write(LOREMIPSUM_PARAGRAPH)
+        with cls.file2.open('w') as tmp_ref:
+            tmp_ref.write(LOREMIPSUM_PARAGRAPH)
+        cls.dir1.mkdir()
+        cls.dir2.mkdir()
+        with cls.file3.open('w') as tmp_ref:
+            tmp_ref.write("testing text")
+        with cls.file4.open('w') as tmp_ref:
+            tmp_ref.write(LOREMIPSUM_PARAGRAPH)
+        with cls.file5.open('w') as tmp_ref:
+            tmp_ref.write("Another test text")
+        return super().setUpClass()
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        # Clean up
+        cls.file1.delete(recursive=True)
+        cls.file2.delete(recursive=True)
+        cls.file3.delete(recursive=True)
+        cls.file4.delete(recursive=True)
+        cls.file5.delete(recursive=True)
+        cls.dir1.delete(recursive=True)
+        cls.dir2.delete(recursive=True)
+        return super().tearDownClass()
+
+    def test01_basic_creation(self):
+        """Testing basic file creation"""
+        local_archive_loc = self.storage.gen_archivefile_ref('basic_creation.tar.gz')
+        assert not local_archive_loc.exists()
+        with ArchiveFile(local_archive_loc).open('w') as open_archive_ref:
+            open_archive_ref.addfile(self.file1)
+            open_archive_ref.addfile(self.file2)
+        assert local_archive_loc.exists()
+        local_archive_loc.delete()
+        with ArchiveFile(local_archive_loc).open('w') as open_archive_ref:
+            open_archive_ref.addfile(self.file1)
+            open_archive_ref.addfile(self.file2)
+            open_archive_ref.addfile(self.dir1, True)
+        assert local_archive_loc.exists()
+        local_archive_loc.delete()
+
+    def test02_reading_test(self):
+        """Testing reading of archive file"""
+        local_archive_loc = self.storage.gen_archivefile_ref('local_reading.tar.gz')
+        with ArchiveFile(local_archive_loc).open('w') as open_archive_ref:
+            open_archive_ref.addfile(self.file1)
+            open_archive_ref.addfile(self.file2)
+            open_archive_ref.addfile(self.dir1, True)
+        assert local_archive_loc.exists()
+        with ArchiveFile(local_archive_loc).open('r') as open_archive_ref:
+            tmp_members = open_archive_ref.list_members
+            extracted_text = open_archive_ref.extractfile(self.file2.name).read().decode('utf-8')
+        assert f'./{self.file1.name}' in tmp_members
+        assert f'./{self.file2.name}' in tmp_members
+        assert f'./{self.dir1.name}/{self.dir2.name}/{self.file4.name}' in tmp_members
+        assert extracted_text==LOREMIPSUM_PARAGRAPH
+        local_archive_loc.delete()
+
+    def test03_testing_extractall(self):
+        """Testing full extraction of all files"""
+        local_archive_loc = self.storage.gen_archivefile_ref('extract_all_test.tar.gz')
+        extraction_loc: StorageLocation = self.storage.tmp_loc.join_loc('extract_dir')
+        extraction_loc.mkdir(True)
+        with ArchiveFile(local_archive_loc).open('w') as open_archive_ref:
+            open_archive_ref.addfile(self.file1)
+            open_archive_ref.addfile(self.file2)
+            open_archive_ref.addfile(self.dir1, True)
+        with ArchiveFile(local_archive_loc).open('r') as open_archive_ref:
+            list_members = open_archive_ref.list_members
+            open_archive_ref.extractall(extraction_loc)
+        for list_member in list_members:
+            assert extraction_loc.join_loc(list_member).exists()
+        assert extraction_loc.join_loc('./test_dir/test.txt').read()=='testing text'
+        extraction_loc.delete(recursive=True)
+        local_archive_loc.delete()
+
+    def test04_appending_data(self):
+        """Testing append capability for archive"""
+        local_archive_loc = self.storage.gen_archivefile_ref('append_archive.tar.gz')
+        with ArchiveFile(local_archive_loc).open('a') as open_archive_ref:
+            open_archive_ref.addfile(self.file1, recursive=False, diff_name=None,
+                allow_auto_change=True)
+        assert local_archive_loc.exists()
+        with ArchiveFile(local_archive_loc).open('a') as open_archive_ref:
+            open_archive_ref.addfile(self.file1, recursive=False, diff_name=None,
+                allow_auto_change=True)
+        assert local_archive_loc.exists()
+        with ArchiveFile(local_archive_loc).open('a') as open_archive_ref:
+            open_archive_ref.addfile(self.file1, recursive=False, diff_name=None,
+                allow_auto_change=True)
+        assert local_archive_loc.exists()
+        with ArchiveFile(local_archive_loc).open('r') as open_archive_ref:
+            list_members = open_archive_ref.list_members
+            assert len(list_members)==3
+            assert open_archive_ref.extractfile(self.file1.name).read()\
+                .decode('utf-8')==LOREMIPSUM_PARAGRAPH
+            assert f'./{self.name_text}.txt' in list_members
+            assert f'./{self.name_text}_run0.txt' in list_members
+            assert f'./{self.name_text}_run1.txt' in list_members
+        local_archive_loc.delete()
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
