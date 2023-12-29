@@ -303,7 +303,7 @@ class TestCase01StorageTesting(unittest.TestCase):
         Storage(storage_config=exported_config)
 
 
-class TestCase01ArchiveFileTesting(unittest.TestCase):
+class TestCase02ArchiveFileTesting(unittest.TestCase):
     """ArchiveFile testing with local and """
 
     @classmethod
