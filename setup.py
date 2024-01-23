@@ -9,8 +9,8 @@ from setuptools import setup
 
 __title__ = "afk"
 __description__ = "Automation Framework Kit for Python"
-__version__ = "1.0.0"
-__build__ = 0x00000
+__version__ = "1.1.0"
+__build__ = 0x00001
 __author__ = "neo154"
 __license__ = "GPL-3.0"
 
@@ -31,9 +31,13 @@ use a virtual environment to run a supported version for AFK
 requires = ["defusedxml==0.7.1", "pandas[performance]==2.1.4",
     "paramiko==2.11.0", "feather-format==0.4.1"]
 
+optional_requires = {
+    'db': 'sqlalchemy==2.0.24'
+}
+
 packages = ['afk', 'afk.utils', 'afk.storage', 'afk.logging_helpers', 'afk.utils.parsers',
     'afk.utils.creds', 'afk.utils.update_funcs', 'afk.storage.utils', 'afk.storage.models',
-    'afk.storage.models.ssh']
+    'afk.storage.models.ssh', 'afk.db']
 
 with open("README.md", mode="r", encoding="utf-8") as f:
     readme = f.read()
@@ -50,6 +54,7 @@ setup(
     include_package_data=True,
     python_requires=">=3.11",
     install_requires=requires,
+    extras_require=optional_requires,
     license=__license__,
     zip_safe=False,
 )

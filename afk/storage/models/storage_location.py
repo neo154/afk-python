@@ -1,8 +1,8 @@
 """storage_location.py
 
 Author: neo154
-Version: 0.1.2
-Date Modified: 2023-12-24
+Version: 0.1.3
+Date Modified: 2024-01-10
 
 Module that defines the interface for storage locations and which methods they are required to
 implement
@@ -41,6 +41,7 @@ class StorageLocation(metaclass=abc.ABCMeta):
             and hasattr(subclass, 'is_dir') and callable(subclass.is_dir)\
             and hasattr(subclass, 'is_file') and callable(subclass.is_file)\
             and hasattr(subclass, 'read') and callable(subclass.read)\
+            and hasattr(subclass, 'force_update_stat') and callable(subclass.force_update_stat)\
             and hasattr(subclass, 'open') and callable(subclass.open)\
             and hasattr(subclass, 'delete') and callable(subclass.delete)\
             and hasattr(subclass, 'move') and callable(subclass.move)\
@@ -119,6 +120,11 @@ class StorageLocation(metaclass=abc.ABCMeta):
     def read(self, mode: Literal['r', 'rb']='r', encoding: str='utf-8',
             logger: Logger=_DEFAULT_LOGGER) -> Union[str, bytes]:
         """Reads object and returns string or bytes"""
+        raise NotImplementedError
+
+    @abc.abstractmethod
+    def force_update_stat(self) -> None:
+        """Force udpates stat info, to assure stat information is there"""
         raise NotImplementedError
 
     @abc.abstractmethod
