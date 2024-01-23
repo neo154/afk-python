@@ -2,8 +2,8 @@
 """remote_filesystem.py
 
 Author: neo154
-Version: 0.2.3
-Date Modified: 2023-12-24
+Version: 0.2.4
+Date Modified: 2024-01-10
 
 Defines interactions and remote filesystem objects
 this will alow for abstraction at storage level for just using and
@@ -277,6 +277,15 @@ class RemoteFile(StorageLocation):
         :returns: None
         """
         self.__file_stat = sftp_conn.stat_path(self.absolute_path)
+
+    def force_update_stat(self) -> None:
+        """
+        Force updates stat information for object, primarily to help update issues for archiving
+
+        :returns: None
+        """
+        with self.__ssh_interface.open() as sftp_conn:
+            self.__update_stat_info(sftp_conn)
 
     @property
     def absolute_path(self) -> Path:

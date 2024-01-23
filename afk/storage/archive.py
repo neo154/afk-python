@@ -1,8 +1,8 @@
 """archive.py
 
 Author: neo154
-Version: 0.1.0
-Date Modified: 2023-12-24
+Version: 0.1.1
+Date Modified: 2024-01-10
 
 Archive module that is responsible for defining the basic operations for archive creation
 and management
@@ -71,6 +71,7 @@ def _handle_tar_add(tar_ref: tarfile.TarFile, list_ref: List[str], new_file: Sto
     if new_file.is_file():
         logger.info("Adding %s to archive", curr_name)
         tarinfo = tarfile.TarInfo(curr_name)
+        new_file.force_update_stat()  # Had to put in to assure values are there
         stat_size = new_file.size
         m_time_ns = new_file.m_time
         c_time_ns = new_file.m_time

@@ -2,8 +2,8 @@
 """local_filesystem.py
 
 Author: neo154
-Version: 0.2.3
-Date Modified: 2023-12-24
+Version: 0.2.4
+Date Modified: 2024-01-10
 
 Defines interactions and local filesystem objects
 this will alow for abstraction at storage level for just using and
@@ -156,6 +156,14 @@ class LocalFile(StorageLocation):
         if self.__stat_info is None:
             return None
         return self.__stat_info.st_atime
+
+    def force_update_stat(self) -> None:
+        """
+        Force updates stat information for object, primarily to help update issues for archiving
+
+        :returns: None
+        """
+        self.__update_stat()
 
     def exists(self) -> bool:
         """
