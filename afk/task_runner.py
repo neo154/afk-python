@@ -2,8 +2,8 @@
 """task_runner.py
 
 Author: neo154
-Version: 0.2.1
-Date Modified: 2023-12-03
+Version: 0.2.2
+Date Modified: 2024-02-02
 
 Module for BaseRunner that is responsible for taking a collection of Jobs, Tasks, and functions
 to be run, and converts them all to tasks. Then takes the tasks nad sets them all up with their
@@ -126,6 +126,8 @@ class Runner():
         if is_base_subclass:
             if 'storage_config' not in kwargs or kwargs['storage_config'] is None:
                 kwargs['storage_config'] = self.storage.to_dict()
+            if 'run_type' not in kwargs or kwargs['run_type'] is None:
+                kwargs['run_type'] = run_type
             task_like = task_like(**kwargs)
             return (task_like, task_like.task_type, task_like.task_name, run_type, {})
         if task_type is None or task_name is None:
