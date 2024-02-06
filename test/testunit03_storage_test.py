@@ -250,11 +250,12 @@ class TestCase01StorageTesting(unittest.TestCase):
             self.storage.add_to_archive_list(self.remote_ref)
         self.storage.create_archive(cleanup=True)
         tmp_file = tarfile.open(str(self.storage.archive_file.absolute_path), 'r:bz2')
-        arc_file = tmp_file.extractfile(self.local_file.name)
+        arc_file = tmp_file.extractfile(f'./{self.local_file.name}')
         read1 = arc_file.read().decode('utf-8')
         assert read1==first_text
         if _HAS_DOCKER:
-            assert tmp_file.extractfile(self.remote_ref.name).read().decode('utf-8')==second_text
+            assert tmp_file.extractfile(f'./{self.remote_ref.name}').read().decode('utf-8')\
+                ==second_text
         tmp_file.close()
         self.storage.archive_file.delete()
 

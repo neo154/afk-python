@@ -2,15 +2,14 @@
 """storage.py
 
 Author: neo154
-Version: 0.2.3
-Date Modified: 2024-02-04
+Version: 0.2.4
+Date Modified: 2024-02-05
 
 
 Class and definitions for how storage is handled for the platform
 """
 
 import datetime
-import tarfile
 from logging import Logger
 from pathlib import Path
 from typing import Dict, List, Union
@@ -20,6 +19,7 @@ from afk.storage.models import (LocalFile, SSHInterfaceCollection,
                                      StorageLocation,
                                      generate_storage_location)
 from afk.storage.storage_config import StorageConfig
+from afk.storage.archive import ArchiveFile
 
 _DEFAULT_LOGGER = generate_logger(__name__)
 
@@ -43,31 +43,6 @@ def _export_entry(entry: StorageLocation) -> Dict:
     :returns: Dictionary of StorageLocation that can be processed for Storage configs
     """
     return {'config_type': entry.storage_type, 'config': entry.to_dict()}
-
-def _add_archive_fileobj(archive_ref: tarfile.TarFile, new_file: StorageLocation,
-        __parent_path: Path=None):
-    """Adds archive to fileobject and recursively if new_file is a directory"""
-    new_name = new_file.name
-    sub_file: StorageLocation
-    if __parent_path is not None:
-        new_name = __parent_path.joinpath(new_name)
-    size_info = new_file.size
-    mtime_info = new_file.m_time
-    tmp_tar_info = tarfile.TarInfo(new_name)
-    tmp_tar_info.size = size_info
-    tmp_tar_info.mtime = mtime_info
-    if new_file.is_file():
-        with new_file.open('rb') as new_ref:
-            archive_ref.addfile(tmp_tar_info, new_ref)
-    elif new_file.is_dir():
-        tmp_tar_info.type = tarfile.DIRTYPE
-        archive_ref.addfile(tmp_tar_info)
-        if __parent_path is None:
-            __parent_path = Path(new_name)
-        else:
-            __parent_path.joinpath(new_name)
-        for sub_file in new_file.iter_location():
-            _add_archive_fileobj(archive_ref, sub_file.name, __parent_path)
 
 class Storage():
     """Storage class that identifies and handles abstracted storage tasks"""
@@ -248,9 +223,9 @@ class Storage():
         """
         tmp_ref = _check_storage_arg(new_loc)
         self.__logger.info("Setting archive loc to: %s", tmp_ref)
-        self._archive_loc =tmp_ref.join_loc(f'archive_{self.report_date_str}')
+        self._archive_loc = tmp_ref.join_loc(f'archive_{self.report_date_str}')
         if self.__archive_file is not None:
-            self.archive_file = self.__get_stem_prefix(self.archive_file)
+            self.__archive_file = self._archive_loc.join_loc(self.archive_file.name)
 
     @property
     def archive_file(self) -> StorageLocation:
@@ -286,7 +261,7 @@ class Storage():
         self.__logger.info("Setting mutex loc to: %s", tmp_ref)
         self.__mutex_loc = tmp_ref
         if self.mutex is not None:
-            self.mutex = self.__get_stem_prefix(self.mutex)
+            self.__mutex_file = self.__mutex_loc.join_loc(self.mutex.name)
 
     @property
     def mutex(self) -> StorageLocation:
@@ -400,10 +375,6 @@ class Storage():
         f_split = file_name.split('.')
         return self.tmp_loc.join_loc(f"{f_split[0]}_{self.report_date_str}"\
             f".{'.'.join(f_split[1:])}")
-
-    def __get_stem_prefix(self, loc: StorageLocation) -> None:
-        """Pulls location name and gets the prefix for location regeneration"""
-        return loc.name.split('.')[0].replace(f'{self.report_date_str}', '')
 
     def __search_storage_group(self, stor_list: List[StorageLocation],
             stor_obj: StorageLocation) -> int:
@@ -547,6 +518,7 @@ class Storage():
             archive_files = self.archive_files
         if archive_loc is None:
             archive_loc = self.archive_file
+        # Create freaking ArchiveFile reference not this garbage idiot
         if not self.check_archive_files(archive_files=archive_files):
             raise RuntimeError("Not all archive files exist, cannot create archive")
         self.__logger.info("Creating archive: %s", archive_loc.name)
@@ -557,19 +529,9 @@ class Storage():
             tmp_dir.mkdir()
         if not tmp_dir.exists():
             tmp_dir.mkdir(exist_ok=True)
-        split_name = archive_loc.name.split(".")
-        archive_basename = split_name[0]
-        suffixes = '.'.join(split_name[1:])
-        tmp_archive_file = tmp_dir.joinpath(f'{archive_basename}_tmp.{suffixes}')
-        tmp_archive_loc = LocalFile(tmp_archive_file)
-        if tmp_archive_file.exists():
-            raise FileExistsError("Temporary archive file already exists, probable issue")
-        with tarfile.open(tmp_archive_file, 'w|bz2') as new_archive:
+        with ArchiveFile(self.archive_file, logger_ref=self.logger).open('w') as open_archive:
             for new_file in archive_files:
-                self.__logger.debug("Archive '%s' adding file '%s'", archive_loc.name,
-                    new_file.name)
-                _add_archive_fileobj(new_archive, new_file)
-        tmp_archive_loc.move(archive_loc, logger=self.__logger)
+                open_archive.addfile(new_file)
         if cleanup:
             self.__logger.info("Running cleanup")
             for new_file in archive_files:
