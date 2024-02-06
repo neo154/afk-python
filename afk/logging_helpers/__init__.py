@@ -3,7 +3,7 @@
 
 Author: neo154
 Version: 0.2.0
-Date Modified: 2023-11-15
+Date Modified: 2024-02-01
 
 Init file for logging_helpers, pulls required references
 """
@@ -25,6 +25,8 @@ def get_local_log_file(task_type: str,
     :param task_type: Identifier for collection of tasks
     :returns: Logging FileHandler
     """
+    if not log_location.exists():
+        log_location.mkdir(True)
     if not log_location.is_dir():
         raise ValueError(f"Given value for log_location is not dir-like: {log_location}")
     if log_location.storage_type=='local_filesystem':

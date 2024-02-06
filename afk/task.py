@@ -2,8 +2,8 @@
 """task.py
 
 Author: neo154
-Version: 0.2.1
-Date Modified: 2023-12-04
+Version: 0.2.2
+Date Modified: 2024-02-02
 
 Module that describes a singular task that is to be, this is the basic structure singular tasks
 that will utilize things like storage modules and other basic utilities
@@ -15,6 +15,7 @@ import sys
 from logging.handlers import QueueHandler
 from multiprocessing import Queue
 from traceback import format_tb
+import re
 from typing import Any, Iterable, Mapping, Union
 
 from afk.storage import Storage
@@ -37,15 +38,17 @@ class BaseTask():
 
     def __init__(self, task_type: str='generic_tasktype', task_name: str='generic_taskname',
             run_type: str='testing', has_mutex: bool=True, has_archive: bool=True,
-            override: bool=False, run_date: datetime.datetime=datetime.datetime.now(),
+            override: bool=False, run_date: datetime.datetime=None,
             storage_config: StorageConfig=None, logger: logging.Logger=_defaultLogger,
             log_level: int=logging.INFO, interactive: bool=INTERACTIVE) -> None:
         """Initializer for all tasks, any logs that occur here will not be in log file for tasks"""
         self.__task_name = task_name.lower().replace(' ', '_')
         self.__task_type = task_type.lower().replace(' ', '_')
         self.__run_type = run_type.lower().replace(' ', '_')
+        if run_date is None:
+            run_date = datetime.datetime.now()
         self.__run_date = run_date
-        self.__storage = Storage(storage_config)
+        self.__storage = Storage(storage_config, job_desc=self.__task_name,)
         self.__task_run_check = False
         self.logger = logger
         self.log_level = log_level
@@ -151,7 +154,7 @@ class BaseTask():
         if self.__has_mutex:
             self.__storage.mutex = self.task_name
         if self.__has_archive:
-            self.__storage.archive_file = self.task_name
+            self.__storage.archive_file = f'{self.task_name}.tar.bz2'
         run = True
         self.logger.debug("Checking run conditions")
         if self.storage.archive_file is not None and self.storage.archive_file.is_file():
@@ -207,7 +210,9 @@ class BaseTask():
             self.main(*args, **kwargs)
         except Exception as excep:          # pylint: disable=broad-except
             for tb_line in format_tb(excep.__traceback__):
-                self.logger.warning(tb_line.strip().replace('\n', ' '))
+                self.logger.warning(re.sub(r'\s+', ' ', re.sub(r'\^+', '', tb_line.strip()))\
+                    .replace('\n', ' '))
+                # self.logger.warning(tb_line.strip().replace('\n', ' '))
             self.logger.error("%s", excep)
             _exit_code(self.__interactive, 1)
 

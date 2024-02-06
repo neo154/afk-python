@@ -2,8 +2,8 @@
 """storage.py
 
 Author: neo154
-Version: 0.2.2
-Date Modified: 2023-12-29
+Version: 0.2.3
+Date Modified: 2024-02-04
 
 
 Class and definitions for how storage is handled for the platform
@@ -557,7 +557,10 @@ class Storage():
             tmp_dir.mkdir()
         if not tmp_dir.exists():
             tmp_dir.mkdir(exist_ok=True)
-        tmp_archive_file = tmp_dir.joinpath(f'{archive_loc.name.split(".")[0]}_tmp.tar.bz2')
+        split_name = archive_loc.name.split(".")
+        archive_basename = split_name[0]
+        suffixes = '.'.join(split_name[1:])
+        tmp_archive_file = tmp_dir.joinpath(f'{archive_basename}_tmp.{suffixes}')
         tmp_archive_loc = LocalFile(tmp_archive_file)
         if tmp_archive_file.exists():
             raise FileExistsError("Temporary archive file already exists, probable issue")
