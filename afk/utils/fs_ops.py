@@ -1,8 +1,8 @@
 """fs_ops.py
 
 Author: neo154
-Version: 0.1.0
-Date Modified: 2022-12-26
+Version: 0.1.1
+Date Modified: 2023-05-29
 
 Responsible for some very basic file-like operations, such as basic loading and more importantly
 exporting data
@@ -133,3 +133,34 @@ def export_json(json_obj: Union[Dict, List[Dict]], dest_loc: StorageLocation,
                 _ = write_ref.write(line)
         else:
             json.dump(json_obj, write_ref)
+
+def tail_file(storage_loc: StorageLocation, n: int=5, buffsize: int=4096,
+        encoding: str='utf-8') -> List[str]:
+    """
+    Gets the lates n-lines of a file
+
+    :param storage_loc: StorageLocation of file to get the end of
+    :param n: Integer of number of lines to return
+    :param buffsize: Integer of bytes to read and try to use for tailing at a time
+    :param encoding: String determining the encoding to use for reading the file
+    """
+    if not storage_loc.exists():
+        raise FileNotFoundError(f"Not able to location storage object: {storage_loc}")
+    if not storage_loc.is_file():
+        raise TypeError(f"Storage object provided isn't a file {storage_loc}")
+    file_size = storage_loc.size
+    current_pos = file_size
+    current_buff: str = ""
+    newline_count = 0
+    while True:
+        with storage_loc.open('r', encoding=encoding) as open_ref:
+            current_pos -= buffsize
+            if current_pos <= 0:
+                open_ref.seek(0)
+                return open_ref.readlines()
+            _ = open_ref.seek(current_pos)
+            tmp_buff: str = open_ref.read(buffsize)
+            newline_count += tmp_buff.count('\n')
+            current_buff = tmp_buff + current_buff
+            if newline_count > n:
+                return current_buff.split('\n')[-n: ]

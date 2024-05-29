@@ -9,8 +9,8 @@ from setuptools import setup
 
 __title__ = "afk"
 __description__ = "Automation Framework Kit for Python"
-__version__ = "1.1.0"
-__build__ = 0x00002
+__version__ = "1.1.1"
+__build__ = 0x00003
 __author__ = "neo154"
 __license__ = "GPL-3.0"
 

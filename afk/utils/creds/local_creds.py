@@ -1,8 +1,8 @@
 """local_creds.py
 
 Author: neo154
-Version: 0.1.0
-Date Modified: 2023-12-27
+Version: 0.1.1
+Date Modified: 2024-05-29
 
 For managing credentials on the local system
 """
@@ -151,7 +151,6 @@ class LocalCredsManager(CredsManagerInterface):
         """
         if self.__type is not None:
             raise ValueError("Cannot set creds for file that has already been created")
-        self.__type = creds_type
         match creds_type:
             case 'user_pass':
                 if username is None or password is None:
@@ -175,6 +174,7 @@ class LocalCredsManager(CredsManagerInterface):
             case _:
                 raise ValueError(f'Unrecongized creds type for local files {self.__type}')
         self.__write_creds()
+        self.__type = creds_type
 
     def update_username(self, username: str) -> None:
         if self.__type!="user_pass":

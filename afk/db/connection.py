@@ -1,8 +1,8 @@
 """utils/db/connection.py
 
 Author: neo154
-Version: 0.1.1
-Date Modified: 2024-02-01
+Version: 0.1.2
+Date Modified: 2024-05-29
 
 Simple methods for connections creation of the DB tables, and populating these DB tables
 """
@@ -15,8 +15,8 @@ from typing import Dict, Generator, List, Literal, Union
 import numpy as np
 import pandas as pd
 from sqlalchemy import (URL, Column, ColumnCollection, Connection, Engine,
-                        Enum, Inspector, MetaData, Select, String, Text,
-                        create_engine, insert, select, text, update)
+                        Enum, Inspector, MetaData, Select, create_engine,
+                        insert, select, text, update)
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.exc import DataError, OperationalError
 from sqlalchemy.orm import Session
@@ -284,8 +284,7 @@ def df_bulk_insert_to_db(p_df: pd.DataFrame, table: DeclarativeBaseTable,
         if not _check_col_default(tb_col):
             if not tb_col.name in db_df:
                 raise ValueError(f"Missing Colum that isn't auto-populated by DB: {tb_col.name}")
-            if isinstance(tb_col.type, (Enum, Text, String)):
-                db_df[tb_col.name] = db_df[tb_col.name].fillna(np.nan).replace([np.nan], [None])
+            db_df[tb_col.name] = db_df[tb_col.name].fillna(np.nan).replace([np.nan], [None])
     record_start = 0
     df_len = db_df.index.size
     logger_ref.info("Starting upload of records")
@@ -354,8 +353,7 @@ def df_bulk_update_to_db(update_df: pd.DataFrame, table: DeclarativeBaseTable,
         upload_df[datetime_col] = upload_df[datetime_col].dt.tz_localize(None)
     db_df = upload_df[list(df_2_db_mapper.keys())].rename(columns=df_2_db_mapper)
     for db_col in db_df.columns:
-        if isinstance(table.__table__.c[db_col].type, Enum):
-            db_df[db_col] = db_df[db_col].fillna(np.nan).replace([np.nan], [None])
+        db_df[db_col] = db_df[db_col].fillna(np.nan).replace([np.nan], [None])
     record_start = 0
     df_len = db_df.index.size
     # Need something we need to replace and fill in the NA values with standard None
