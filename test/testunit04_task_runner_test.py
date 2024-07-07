@@ -50,7 +50,11 @@ class Test04CaseTaskRunnerTesting(unittest.TestCase):
         if not cls.log_path.is_dir():
             cls.log_path.mkdir()
         # need to send log location as localfile instae dof path
-        cls.test_runner = Runner(storage=cls.base_storage)
+        for mutex_file in cls.mutex_path.glob("*.mutex"):
+            mutex_file.unlink()
+        for log_file in cls.log_path.iterdir():
+            log_file.unlink()
+        cls.test_runner = Runner(storage=cls.base_storage, auto_start=False)
         return super().setUpClass()
 
     @classmethod
@@ -62,6 +66,15 @@ class Test04CaseTaskRunnerTesting(unittest.TestCase):
         if cls.test_runner.is_running:
             cls.test_runner.shutdown()
         return super().tearDownClass()
+
+    def tearDown(self) -> None:
+        for mutex_file in self.mutex_path.glob("*.mutex"):
+            mutex_file.unlink()
+        if self.test_runner.is_running:
+            self.test_runner.shutdown()
+            sleep(10)
+        self.clear_used_files()
+        return super().tearDown()
 
     def clear_used_files(self) -> None:
         """Just used to clear logs"""
@@ -87,8 +100,7 @@ class Test04CaseTaskRunnerTesting(unittest.TestCase):
 
     def test04_runner_service_shutdown(self) -> None:
         """Testing shutdown of the task runner service"""
-        if not self.test_runner.is_running:
-            self.test_runner.start()
+        self.test_runner.start()
         assert self.test_runner.is_running
         assert self.test_runner.shutdown() is None
         sleep(5)
@@ -96,10 +108,6 @@ class Test04CaseTaskRunnerTesting(unittest.TestCase):
 
     def test05_task_and_logger_tracking(self) -> None:
         """Testing tracking of task object and logger object"""
-        self.clear_used_files()
-        if self.test_runner.is_running:
-            self.test_runner.shutdown()
-        sleep(5)
         self.test_runner.start()
         self.test_runner.add_tasks(self.test_runner.generate_task_instance(TestingTask1(
             sleep_timer=20, storage_config=self.storage_config)))
@@ -111,8 +119,7 @@ class Test04CaseTaskRunnerTesting(unittest.TestCase):
 
     def test06_adding_multiple_task_instance(self) -> None:
         """Testing addition of multiple task instances while service is running"""
-        if not self.test_runner.is_running:
-            self.test_runner.start()
+        self.test_runner.start()
         tasks_l = [
             self.test_runner.generate_task_instance(TestingTask3,
                 storage_config=self.storage_config, sleep_timer=10),
@@ -137,11 +144,6 @@ class Test04CaseTaskRunnerTesting(unittest.TestCase):
 
     def test08_log_evaluation(self) -> None:
         """Testing the generation of expected logs and analysis of said logs"""
-        sleep(10)
-        self.clear_used_files()
-        sleep(10)
-        if self.test_runner.is_running:
-            self.test_runner.shutdown()
         sleep(10)
         self.test_runner.start()
         tasks_l = [
@@ -204,9 +206,6 @@ class Test04CaseTaskRunnerTesting(unittest.TestCase):
 
     def test09_mutex_creation_and_cleanup(self) -> None:
         """Testing the creation of mutexes, only one should remain in a particular spot"""
-        self.clear_used_files()
-        if self.test_runner.is_running:
-            self.test_runner.shutdown()
         self.test_runner.start()
         tasks_l = [
             self.test_runner.generate_task_instance(TestingTask5(
@@ -220,14 +219,10 @@ class Test04CaseTaskRunnerTesting(unittest.TestCase):
         assert assumed_left_over_mutex.exists()
         assumed_left_over_mutex.delete()
         assert not assumed_left_over_mutex.exists()
-        self.test_runner.shutdown()
 
     def test10_emergency_backout(self) -> None:
         """Testing ability to shutdown and kill would be zombie processes"""
         base_log_loc = LocalFile(self.log_path)
-        if self.test_runner.is_running:
-            self.test_runner.shutdown()
-        self.clear_used_files()
         self.test_runner.start()
         self.test_runner.add_tasks(self.test_runner.generate_task_instance(TestingTask1(
             sleep_timer=60, storage_config=self.storage_config)))
@@ -248,9 +243,6 @@ class Test04CaseTaskRunnerTesting(unittest.TestCase):
     def test11_error_traceback(self) -> None:
         """Testing error traceback error message with stack trace"""
         base_log_loc = LocalFile(self.log_path)
-        if self.test_runner.is_running:
-            self.test_runner.shutdown()
-        self.clear_used_files()
         self.test_runner.start()
         self.test_runner.add_tasks(self.test_runner.generate_task_instance(TestingTask2(
             storage_config=self.storage_config, throw_error=True)))

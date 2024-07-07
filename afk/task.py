@@ -2,8 +2,8 @@
 """task.py
 
 Author: neo154
-Version: 0.2.2
-Date Modified: 2024-02-02
+Version: 0.2.3
+Date Modified: 2024-06-19
 
 Module that describes a singular task that is to be, this is the basic structure singular tasks
 that will utilize things like storage modules and other basic utilities
@@ -25,6 +25,8 @@ _defaultLogger = logging.getLogger(__name__)
 
 # Trying to identify if we are running interactively
 INTERACTIVE = hasattr(sys, 'ps2') | sys.__stdin__.isatty()
+
+ONLY_SPAWN = sys.platform!='linux'
 
 def _exit_code(interactive: bool, code: int=0):
     """Quick exit function for tasks"""
@@ -182,7 +184,7 @@ class BaseTask():
         self.logger.info("CONDITIONS_PASSED")
 
     def _prep_run(self, log_queue: Queue=None, mutex_queue: Queue=None, uuid: str=None,
-            args: Iterable[Any]=None, kwargs: Mapping[str, Any]=None) -> None:
+            start_method: str=None, args: Iterable[Any]=None, kwargs: Mapping[str, Any]=None) -> None:
         """
         Prepares for a running of main function for logging
 
@@ -200,12 +202,13 @@ class BaseTask():
             args = ()
         if kwargs is None:
             kwargs = {}
-        # Check even if it is a logger or loggerAdapter
-        if isinstance(self.logger, logging.Logger):
-            self.logger.addHandler(QueueHandler(log_queue))
-        elif isinstance(self.logger, logging.LoggerAdapter):
-            self.logger.logger.setLevel(self.log_level)
-            self.logger.logger.addHandler(QueueHandler(log_queue))
+        if ONLY_SPAWN or (not ONLY_SPAWN and start_method not in [None, 'fork']):
+            # Check even if it is a logger or loggerAdapter
+            if isinstance(self.logger, logging.Logger):
+                self.logger.addHandler(QueueHandler(log_queue))
+            elif isinstance(self.logger, logging.LoggerAdapter):
+                self.logger.logger.setLevel(self.log_level)
+                self.logger.logger.addHandler(QueueHandler(log_queue))
         try:
             self.main(*args, **kwargs)
         except Exception as excep:          # pylint: disable=broad-except

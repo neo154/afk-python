@@ -122,6 +122,7 @@ class TestCase05AfkScheduler(unittest.TestCase):
     def tearDown(self) -> None:
         self.test_scheduler.shutdown()
         self.clear_used_files()
+        self.remove_schedule_references()
         return super().tearDown()
 
     def clear_used_files(self) -> None:
@@ -130,6 +131,11 @@ class TestCase05AfkScheduler(unittest.TestCase):
             log_file.unlink()
         for mutex_file in self.mutex_path.glob("*.mutex"):
             mutex_file.unlink()
+
+    def remove_schedule_references(self) -> None:
+        """Removes schedule references from self to avoid double schedulig in tests"""
+        for sched_entry in self.test_scheduler.job_schedule:
+            self.test_scheduler.remove_sched_reference(sched_entry['uuid'])
 
     def test01_task_instance_generation(self) -> None:
         """Testing generation of task instances"""
@@ -174,9 +180,11 @@ class TestCase05AfkScheduler(unittest.TestCase):
 
     def test04_multi_concurrent_task_schedule(self) -> None:
         """Testing multiple scheduled and instant tasks"""
+        print(f'\nStart time: {datetime.now()}')
         if not self.test_scheduler.check_task_id('task1'):
             self.test_scheduler.add_scheduler_task('task1', TestingTask1)
-        self.test_scheduler.add_scheduler_task('task2', TestingTask2)
+        if not self.test_scheduler.check_task_id('task2'):
+            self.test_scheduler.add_scheduler_task('task2', TestingTask2)
         self.test_scheduler.add_scheduler_task('task3', TestingTask3, kwargs={'sleep_timer': 10})
         scheduled_time1 = _calculate_first_run(1)
         scheduled_time2 = _calculate_first_run(2)

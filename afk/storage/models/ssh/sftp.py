@@ -1,8 +1,8 @@
 """sftp.py
 
 Author: neo154
-Version: 0.1.1
-Date Modified: 2023-12-03
+Version: 0.1.2
+Date Modified: 2024-06-23
 
 Module that is primarily intended to contain all sftp actions for remote server files
 that can be retrieved via paramiko/ssh
@@ -12,12 +12,18 @@ from io import FileIO
 from pathlib import Path
 from stat import S_ISDIR, S_ISREG
 from typing import Callable, List, Literal, Union
+from sys import platform
 
 import paramiko
 
 from afk.storage.utils import ValidPathArgs, confirm_path_arg
 
 _ConnectionCallback = Callable[[None], None]
+
+_NIX_PLATFORM = platform in ['freebsd', 'darwin', 'linux']
+
+class NonUnixParamikoWarning(Exception):
+    """Exception class for known issues with paramiko on Windows"""
 
 class SFTPConfigException(Exception):
     """Exception class for SSH configuration errors for Observer SSH command line wrapper"""
@@ -417,7 +423,10 @@ class RemoteConnector():
     """Paramiko configuration and object for interacting with files through paramiko SSH"""
 
     def __init__(self, ssh_key: ValidPathArgs=None, host: str=None, userid: str=None,
-            port: int=22) -> None:
+            port: int=22, ignore_non_nix_warning: bool=False) -> None:
+        if not _NIX_PLATFORM and not ignore_non_nix_warning:
+            raise NonUnixParamikoWarning(
+                "Paramiko isn't promised to work fully on non-unix systems")
         self.ssh_key = normalize_pathlike(ssh_key)
         self.host = host
         self.userid = userid
