@@ -10,6 +10,7 @@ from test_libraries.junktext import (LOREMIPSUM_PARAGRAPH,
 
 from afk.storage.models.storage_models import (RemoteConnector,
                                                generate_ssh_interface)
+from afk.storage.models.ssh.sftp import _NIX_PLATFORM
 from afk.storage.utils.rsync import raw_hash_check
 
 try:
@@ -30,6 +31,7 @@ def recurse_delete(path: Path):
             recurse_delete(sub_p)
         path.rmdir()
 
+@unittest.skipIf(not _NIX_PLATFORM, "Require Unix/Mac platform for testing with Paramiko")
 @unittest.skipIf(not (_HAS_DOCKER), "Docker not located")
 class TestCase01RemoteConnector(unittest.TestCase):
     """Set of SSH tests that are using Paramiko"""
@@ -145,6 +147,7 @@ class TestCase01RemoteConnector(unittest.TestCase):
                 assert new_file in files
             test_conn.delete_path('/config/test_dir_recurse/yes', True, False)
 
+@unittest.skipIf(not _NIX_PLATFORM, "Require Unix/Mac platform for testing with Paramiko")
 @unittest.skipIf(not _HAS_DOCKER, "Docker wasn't found, won't run the test")
 class TestCase02RemoteFiles(unittest.TestCase):
     """Testing for RemoteFiles objects"""
