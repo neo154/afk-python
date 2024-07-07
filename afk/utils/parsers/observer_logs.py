@@ -1,8 +1,8 @@
 """observer_logs.py
 
 Author: neo154
-Version: 0.2.2
-Date Modified: 2023-12-04
+Version: 0.2.3
+Date Modified: 2024-06-23
 
 Parser for log parinsg using re and group extraction
 """
@@ -22,7 +22,7 @@ _RUN_TYPE_PATTERN = r'(?P<run_type>[0-9a-zA-Z\_]+)'
 _JOBTYPE_PATTERN = r'(?P<task_type>[a-zA-Z\_\-0-9\.]+)'
 _JOBNAME_PATTERN = r'(?P<task_name>[a-zA-Z\_\-0-9\.]+)'
 _UUID_PATTERN = r'(?P<uuid>[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})'
-_PATH_PATTERN = r'\'(?P<file_name>\/[0-9a-zA-Z\_\-\.\/]+)\''
+_PATH_PATTERN = r'\'(?P<file_name>(c:|\/)[0-9a-zA-Z\_\-\.\/\\]+)\''
 _LINENO_PATTERN = r'LINENO:(?P<line_number>[0-9]+)'
 _LOG_LEVEL_PATTERN = r'(?P<log_level>[A-Za-z]+):'
 _MESSAGE_PATTERN = r'(?P<message>.*)'
