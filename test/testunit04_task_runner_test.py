@@ -130,6 +130,8 @@ class Test04CaseTaskRunnerTesting(unittest.TestCase):
                 storage_config=self.storage_config, throw_error=True))
         ]
         assert self.test_runner.add_tasks(tasks_l) is None
+        sleep(10)
+        self.test_runner.shutdown()
 
     def test07_adding_callable_instances(self) -> None:
         """Testing adding callables ask tasks, no checks but at least can run simple functions"""
@@ -246,7 +248,8 @@ class Test04CaseTaskRunnerTesting(unittest.TestCase):
         self.test_runner.start()
         self.test_runner.add_tasks(self.test_runner.generate_task_instance(TestingTask2(
             storage_config=self.storage_config, throw_error=True)))
-        sleep(5)
+        sleep(30)
+        self.test_runner.shutdown()
         test_task_logs = base_log_loc.join_loc('testing_task_type1.log')
         assert test_task_logs.exists()
         test_task_logs_df = logs_2_df(test_task_logs)
