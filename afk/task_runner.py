@@ -2,8 +2,8 @@
 """task_runner.py
 
 Author: neo154
-Version: 0.2.4
-Date Modified: 2024-06-19
+Version: 0.2.5
+Date Modified: 2024-07-21
 
 Module for BaseRunner that is responsible for taking a collection of Jobs, Tasks, and functions
 to be run, and converts them all to tasks. Then takes the tasks nad sets them all up with their
@@ -170,6 +170,10 @@ class Runner():
                 return
             except OSError:
                 return
+            except ValueError as exc:
+                if not self.__is_running:
+                    return
+                raise exc
             except Exception as exc:
                 raise exc
 
@@ -405,3 +409,4 @@ class Runner():
             if self.__logger.hasHandlers():
                 self.__runner_logger.handlers.clear()
             self.__log_queue_refs = {}
+        self.__graceful_kill = False
