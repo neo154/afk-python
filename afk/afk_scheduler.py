@@ -1,8 +1,8 @@
 """afk_scheduler.py
 
 Author: neo154
-Version: 0.1.3
-Date Modified: 2022-12-24
+Version: 0.1.4
+Date Modified: 2024-06-23
 
 For running the scheudler for tasks and tasks
 """
@@ -207,7 +207,7 @@ class JobScheduler(Runner):
                 tmp_ref = self.__scheduled_tasks_inactive
             for item in tmp_ref:
                 ret_l.append({'uuid': item['uuid'], 'task_id': item['task_id'],
-                    'kwargs': item['kwargs']})
+                    'task_args': item['task_args']})
             return ret_l
 
     @property

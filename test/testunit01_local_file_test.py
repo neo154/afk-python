@@ -7,6 +7,9 @@ from pathlib import Path
 
 _BASE_LOC = Path(__file__).parent.joinpath('tmp')
 
+if not _BASE_LOC.exists():
+    _BASE_LOC.mkdir()
+
 _LIB_BASE = Path(__file__).absolute().parent.parent
 if str(_LIB_BASE) not in sys.path:
     sys.path.insert(1, str(_LIB_BASE))

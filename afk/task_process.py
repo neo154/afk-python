@@ -2,8 +2,8 @@
 """task_process.py Module of observer
 
 Author: neo154
-Version: 0.1.0
-Date Modified: 2023-04-28
+Version: 0.1.1
+Date Modified: 2023-06-19
 
 Responsible for tasks that are run by a runner, represents an instance of a task or function
 that is run at a time, with identifying information for the instance using a UUID.
@@ -122,7 +122,7 @@ class TaskProcess(Process):
         """Method to wrap up and include require arguments for actual run"""
         if self.task is not None and self.mp_log_queue is not None:
             self._kwargs = {'log_queue': self.mp_log_queue, 'mutex_queue': self.mutex_queue,
-                'uuid': self.uuid, 'kwargs': self._kwargs}
+                'uuid': self.uuid, 'start_method': self._start_method, 'kwargs': self._kwargs}
         return super().run()
 
     def start(self) -> None:

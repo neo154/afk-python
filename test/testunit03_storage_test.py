@@ -5,6 +5,7 @@ import datetime
 import tarfile
 import unittest
 from pathlib import Path
+from sys import platform
 
 from test_libraries.junktext import LOREMIPSUM_PARAGRAPH
 
@@ -12,10 +13,12 @@ from afk.storage.archive import ArchiveFile
 from afk.storage.models import StorageLocation
 from afk.storage.models.local_filesystem import LocalFile
 from afk.storage.models.remote_filesystem import RemoteFile
+from afk.storage.models.ssh.sftp import _NIX_PLATFORM
 from afk.storage.models.storage_models import generate_ssh_interface
 from afk.storage.storage import Storage
 
 _BASE_LOC = Path(__file__).parent.joinpath('tmp')
+_IS_WINDOWS = platform in ['cygwin', 'win32']
 
 try:
     from docker.errors import DockerException  # pylint: disable=unused-import
@@ -23,6 +26,8 @@ try:
     _HAS_DOCKER = True
 except ImportError:
     _HAS_DOCKER = False
+
+CAN_RUN_REMOTE = _HAS_DOCKER and _NIX_PLATFORM
 
 def recurse_delete(path: Path):
     """Recursive deletion"""
@@ -49,17 +54,22 @@ class TestCase01StorageTesting(unittest.TestCase):
             .joinpath('docker_files/test_id_rsa').absolute()
         pub_key = Path(__file__).parent\
             .joinpath('docker_files/test_id_rsa.pub').absolute()
-        cls._docker_ref = DockerImage(priv_key, pub_key)
-        cls._docker_ref.start()
-        cls.ssh_interface = generate_ssh_interface(priv_key, 'localhost', 'test_user', port=2222)
         cls.local_file = LocalFile(_BASE_LOC.joinpath('test.txt'))
-        cls.remote_ref = RemoteFile(Path('/config/test2.txt'), cls.ssh_interface)
+        cls.ssh_interface = None
+        cls._docker_ref = None
+        cls.remote_ref = None
+        if CAN_RUN_REMOTE:
+            cls._docker_ref = DockerImage(priv_key, pub_key)
+            cls._docker_ref.start()
+            cls.ssh_interface = generate_ssh_interface(priv_key, 'localhost', 'test_user', port=2222)
+            cls.remote_ref = RemoteFile(Path('/config/test2.txt'), cls.ssh_interface)
         return super().setUpClass()
 
     @classmethod
     def tearDownClass(cls) -> None:
-        cls._docker_ref.stop()
-        cls._docker_ref.delete()
+        if CAN_RUN_REMOTE:
+            cls._docker_ref.stop()
+            cls._docker_ref.delete()
         return super().tearDownClass()
 
     def test01_report_date(self):
@@ -152,6 +162,7 @@ class TestCase01StorageTesting(unittest.TestCase):
             .joinpath(f'test_data_{self.storage.report_date_str}.csv.gz')
         assert self.storage.gen_datafile_ref('test_data.csv.gz').absolute_path == data_file
 
+    @unittest.skipIf(not _NIX_PLATFORM, "Paramiko doesn't work fully on windows")
     @unittest.skipIf(not _HAS_DOCKER, "Doesn't have docker, must skip test")
     def test11_sshinterfaces(self):
         """Testing ssh interface interactions"""
@@ -242,7 +253,7 @@ class TestCase01StorageTesting(unittest.TestCase):
         with self.local_file.open('w') as tmp_ref:
             tmp_ref.write(first_text)
         self.storage.add_to_archive_list(self.local_file)
-        if _HAS_DOCKER:
+        if CAN_RUN_REMOTE:
             self.local_file.copy(self.remote_ref)
             assert self.remote_ref.exists()
             with self.remote_ref.open('w') as tmp_ref:
@@ -253,7 +264,7 @@ class TestCase01StorageTesting(unittest.TestCase):
         arc_file = tmp_file.extractfile(f'./{self.local_file.name}')
         read1 = arc_file.read().decode('utf-8')
         assert read1==first_text
-        if _HAS_DOCKER:
+        if CAN_RUN_REMOTE:
             assert tmp_file.extractfile(f'./{self.remote_ref.name}').read().decode('utf-8')\
                 ==second_text
         tmp_file.close()
@@ -262,7 +273,7 @@ class TestCase01StorageTesting(unittest.TestCase):
     def test18_storage_export(self):
         """Test storage exporting and creation of storage from that"""
         exported_config = self.storage.to_dict()
-        local_path = str(_BASE_LOC)
+        local_path = _BASE_LOC
         expected_config = {
             'base_loc': {
                 'config_type': 'local_filesystem', 'config': {
@@ -271,32 +282,32 @@ class TestCase01StorageTesting(unittest.TestCase):
             },
             'data_loc': {
                 'config_type': 'local_filesystem', 'config': {
-                    'path_ref': f'{local_path}/data'
+                    'path_ref': f'{local_path.joinpath('data')}'
                 }
             },
             'report_loc': {
                 'config_type': 'local_filesystem', 'config': {
-                    'path_ref': f'{local_path}/reports'
+                    'path_ref': f'{local_path.joinpath('reports')}'
                 }
             },
             'tmp_loc': {
                 'config_type': 'local_filesystem', 'config': {
-                    'path_ref': f'{local_path}/tmp'
+                    'path_ref': f'{local_path.joinpath('tmp')}'
                 }
             },
             'mutex_loc': {
                 'config_type': 'local_filesystem', 'config': {
-                    'path_ref': f'{local_path}/tmp'
+                    'path_ref': f'{local_path.joinpath('tmp')}'
                 }
             },
             'log_loc': {
                 'config_type': 'local_filesystem', 'config': {
-                    'path_ref': f'{local_path}/logs'
+                    'path_ref': f'{local_path.joinpath('logs')}'
                 }
             },
             'archive_loc': {
                 'config_type': 'local_filesystem', 'config': {
-                    'path_ref': f'{local_path}/archives'
+                    'path_ref': f'{local_path.joinpath('archives')}'
                 }
             },
             'ssh_interfaces': []}
@@ -379,7 +390,10 @@ class TestCase02ArchiveFileTesting(unittest.TestCase):
         assert f'./{self.file1.name}' in tmp_members
         assert f'./{self.file2.name}' in tmp_members
         assert f'./{self.dir1.name}/{self.dir2.name}/{self.file4.name}' in tmp_members
-        assert extracted_text==LOREMIPSUM_PARAGRAPH
+        if not _IS_WINDOWS:
+            assert extracted_text==LOREMIPSUM_PARAGRAPH
+        else:
+            assert extracted_text.replace('\r', '')==LOREMIPSUM_PARAGRAPH
         local_archive_loc.delete()
 
     def test03_testing_extractall(self):
@@ -418,8 +432,12 @@ class TestCase02ArchiveFileTesting(unittest.TestCase):
         with ArchiveFile(local_archive_loc).open('r') as open_archive_ref:
             list_members = open_archive_ref.list_members
             assert len(list_members)==3
-            assert open_archive_ref.extractfile(self.file1.name).read()\
-                .decode('utf-8')==LOREMIPSUM_PARAGRAPH
+            extracted_text = open_archive_ref.extractfile(self.file1.name).read()\
+                .decode('utf-8')
+            if not _IS_WINDOWS:
+                assert extracted_text==LOREMIPSUM_PARAGRAPH
+            else:
+                assert extracted_text.replace('\r', '')==LOREMIPSUM_PARAGRAPH
             assert f'./{self.name_text}.txt' in list_members
             assert f'./{self.name_text}_run0.txt' in list_members
             assert f'./{self.name_text}_run1.txt' in list_members
